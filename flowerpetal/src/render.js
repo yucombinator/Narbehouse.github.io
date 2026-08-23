@@ -416,6 +416,11 @@ export function initRender(canvas) {
       petalGeometry = geo;
       for (const m of petalMeshes) m.geometry = geo;
     },
+    // Reset the trail slots (called on teleport / new meadow / start so the
+    // ribbon never stretches through stale world positions).
+    resetTrail() {
+      trailHistory.length = 0;
+    },
     frame(dt, petalPos, bank, timeSec, steerLevel = 0) {
       nowSec = timeSec; // keep the acquisition clock current
       petal.position.set(petalPos.x, petalPos.y, petalPos.z);
@@ -428,39 +433,41 @@ export function initRender(canvas) {
       // at one point).
       {
         const last = trailHistory[0];
-        if (!last || Math.hypot(last.x - petalPos.x, last.z - petalPos.z) > 2.5) {
+        if (!last || Math.hypot(last.x - petalPos.x, last.z - petalPos.z) > 3.2) {
           trailHistory.unshift({ x: petalPos.x, y: petalPos.y, z: petalPos.z });
-          if (trailHistory.length > 24) trailHistory.pop();
+          if (trailHistory.length > 40) trailHistory.pop();
         }
       }
       const wind = windAt(timeSec, 11);
       const windBias = Math.max(-1, Math.min(1, wind.swayVx));
+      // Flight direction: the petal moves toward -z, so the trail streams to
+      // the +z side (behind the player). Each petal keeps its OWN fixed lag
+      // along that axis with a lateral drift, so the ribbon spreads reliably.
       for (let i = 0; i < petalMeshes.length; i++) {
         const m = petalMeshes[i];
         const u = m.userData;
-        // Ease-in for a freshly acquired petal.
         let ease = 1;
         if (u.born >= 0) {
           const age = timeSec - u.born;
           const k = Math.min(1, age / 1.0);
           ease = k * k * (3 - 2 * k);
         }
-                // Slot: petal i chases the path point i+2 steps back (with per-petal
-        // spacing) so the ribbon genuinely lags behind instead of stacking.
-        // The lerp toward the slot preserves upstream spacing.
-        const slot = trailHistory[Math.min(i + 2, trailHistory.length - 1)] || petalPos;
-        const lat = Math.sin(u.ph0 + timeSec * 0.6) * 0.7;
-        const lat2 = Math.cos(u.ph0 * 2 + timeSec * 0.8) * 0.5;
-        const px = slot.x + lat + windBias * 0.7;
-        const py = slot.y + lat2 * 0.4;
-        const pz = slot.z;
+        // Petal i sits (i+1)*3.6 units BEHIND the player. Flight is toward
+        // -z, so behind = +z (toward the camera side). This guarantees a
+        // visible, evenly spaced ribbon streaming back.
+        const lag = (i + 1) * 3.6;
+        // Meshes live in the ring's LOCAL space (ring sits at the petal's
+        // world position), so z must be RELATIVE: +lag = behind (+z = camera
+        // side), x/y are relative too.
+        const px = Math.sin(u.ph0 + timeSec * 0.5) * 1.1 + windBias * 1.4;
+        const py = Math.cos(u.ph0 * 1.7 + timeSec * 0.6) * 0.55;
+        const pz = lag;
         m.position.set(
-          lerp(m.position.x, px, ease),
-          lerp(m.position.y, py, ease),
-          lerp(m.position.z, pz, ease)
+          lerp(m.position.x, px, Math.min(1, dt * 4) * ease),
+          lerp(m.position.y, py, Math.min(1, dt * 4) * ease),
+          lerp(m.position.z, pz, Math.min(1, dt * 4) * ease)
         );
         m.scale.setScalar((0.3 + ease * 0.7) * (1 + windIntensity * 0.18));
-        // Orient along the trail direction with per-petal rest pose.
         m.rotation.x = u.basePitch + windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
         m.rotation.y = u.baseYaw + Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
         m.rotation.z = u.baseRoll + Math.sin(timeSec * 0.9 + u.ph0) * 0.1;

@@ -260,6 +260,7 @@ function resetProgress() {
 window.__petalGame = {
   teleport(x, z) {
     petal = { x, z, bank: 0, y: trail.pointAt(z).y };
+    render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
     return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed };
@@ -354,6 +355,7 @@ function bloomCheck() {
   collectedSet = new Set();
   allBloomed = false;
   render.setTrail(trail.buds, trail.mother);
+  render.resetTrail(); // new meadow = new ribbon
   saveProgress();
   updateHud();
 }
@@ -514,6 +516,7 @@ function startGame() {
 	render.setPetalGlow((size - 1) / (MAX_SIZE - 1));
 	// Begin the ambient pad on this user gesture (autoplay policy).
 	if (audio && ambientCheck && ambientCheck.checked) audio.startAmbient();
+	render.resetTrail(); // fresh ribbon from the starting path, no stale slots
 	titleEl.style.display = 'none';
 	updateHud();
 }
