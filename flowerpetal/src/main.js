@@ -398,7 +398,9 @@ function loop() {
   render.setPetalSize(size);
   render.setPetalGlow((size - 1) / (MAX_SIZE - 1));
   const windLean = Math.max(-0.3, Math.min(0.3, wind.swayVx * 0.3));
-  render.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank + windLean, clock.elapsedTime);
+  // Steering intensity (0..1): drives the wind-screen effect + camera zoom.
+  const steerLevel = (input.left || input.right) ? 1 : 0;
+  render.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank + windLean, clock.elapsedTime, steerLevel);
   render.renderer.render(render.scene, render.camera);
   requestAnimationFrame(loop);
 }

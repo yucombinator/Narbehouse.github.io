@@ -165,6 +165,7 @@ export function initRender(canvas) {
   let petalColors = [0xff9ec0];
   let nowSec = 0; // game clock, cached from frame() for eases
   let petalGeometry = PETAL_GEO; // upgraded to the CC-BY model when loaded
+  let windIntensity = 0; // 0 = calm, 1 = full wind rush (ramps with steering)
 
   function rebuildPetals() {
     for (const m of petalMeshes) {
@@ -266,8 +267,8 @@ export function initRender(canvas) {
   scene.add(mother);
 
   // Clouds.
-  const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
   const clouds = [];
+  const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
   for (let i = 0; i < 10; i++) {
     const c = new THREE.Mesh(new THREE.SphereGeometry(9 + Math.random() * 12, 10, 8), cloudMat);
     c.scale.y = 0.35;
@@ -277,6 +278,30 @@ export function initRender(canvas) {
     scene.add(c);
     clouds.push(c);
   }
+
+  // Wind streak ring: instanced thin light blades that swirl around the
+  // player, growing long and bright with the steering wind-rush.
+  const STREAK_N = 26;
+  const streakGeo = new THREE.PlaneGeometry(0.5, 0.5, 1, 1);
+  const streakMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.1,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const streakMesh = new THREE.InstancedMesh(streakGeo, streakMat, STREAK_N);
+  streakMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const streakSeeds = [];
+  for (let i = 0; i < STREAK_N; i++) {
+    streakSeeds.push({
+      ang: (i / STREAK_N) * Math.PI * 2 + Math.random() * 0.4,
+      spin: 0.4 + Math.random() * 0.5,
+      r: 2.2 + Math.random() * 2.4,
+      yoff: (Math.random() - 0.5) * 2.6,
+    });
+  }
+  scene.add(streakMesh);
 
   const api = {
     scene,
@@ -330,11 +355,14 @@ export function initRender(canvas) {
       petalGeometry = geo;
       for (const m of petalMeshes) m.geometry = geo;
     },
-    frame(dt, petalPos, bank, timeSec) {
+    frame(dt, petalPos, bank, timeSec, steerLevel = 0) {
       nowSec = timeSec; // keep the acquisition clock current
       petal.position.set(petalPos.x, petalPos.y, petalPos.z);
       petal.rotation.z = bank * 0.6;
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
+      // Wind intensity eases toward the steering input so the breeze visibly
+      // picks up when banking and calms when cruising straight.
+      windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 2.5));
       // Wind-swirl: each petal churns around its own orbit — speed and
       // direction vary per petal, offset by the live wind (swayVx), so the
       // wreath tumbles with the breeze instead of circling rigidly.
@@ -359,14 +387,14 @@ export function initRender(canvas) {
         const px = Math.cos(u.orbit) * rad;
         const py = Math.sin(u.orbit) * rad * u.flat + 0.06 * Math.sin(timeSec * u.tumble + u.ph0);
         const pz = u.z0 + Math.sin(timeSec * 1.1 + u.orbit * 2) * u.zdepth * 0.35;
-        m.position.set(px * ease, py * ease, pz * ease);
-        m.scale.setScalar(0.3 + ease * 0.7);
-        // Orient with the wind around each petal's OWN rest pose, so petals
-        // hold different angles (some face up, some tilted sideways) and the
-        // wind wobble is only a small modulation on top.
-        m.rotation.x = u.basePitch + windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
-        m.rotation.y = u.baseYaw + Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
-        m.rotation.z = u.baseRoll + Math.sin(timeSec * 0.9 + u.ph0) * 0.1;
+        	      m.position.set(px * ease, py * ease, pz * ease);
+	      // Petals puff out and churn harder while the wind rushes (steering).
+	      m.scale.setScalar((0.3 + ease * 0.7) * (1 + windIntensity * 0.18));
+	      // Orient with the wind around each petal's OWN rest pose; the
+	      // wobble amplitude and speed grow with the wind rush.
+	      m.rotation.x = u.basePitch + windBias * (0.18 + windIntensity * 0.35) + Math.sin(timeSec * (1.4 + windIntensity * 1.6) + u.ph0) * (0.06 + windIntensity * 0.2);
+	      m.rotation.y = u.baseYaw + Math.sin(timeSec * (1.1 + windIntensity * 1.1) + u.ph0 * 2) * (0.08 + windIntensity * 0.2);
+	      m.rotation.z = u.baseRoll + Math.sin(timeSec * (0.9 + windIntensity * 1.3) + u.ph0) * (0.1 + windIntensity * 0.24);
       }
 
       // Grass: field centered on the petal in world space; each blade is
@@ -479,10 +507,38 @@ export function initRender(canvas) {
         c.position.z = camera.position.z + c.userData.zo;
       }
 
+      // Wind streak particles: a ring of light streamers around the player
+      // that brighten and stretch when steering (windIntensity).
+      if (streakMat) {
+        const sDummy = new THREE.Object3D();
+        for (let i = 0; i < STREAK_N; i++) {
+          const s = streakSeeds[i];
+          const angle = s.ang + timeSec * s.spin;
+          const rr = s.r * (1 + windIntensity * 0.5);
+          sDummy.position.set(
+            petalPos.x + Math.cos(angle) * rr,
+            petalPos.y + Math.sin(angle) * rr * 0.4 + s.yoff,
+            petalPos.z + Math.sin(angle * 1.3) * 2 * windIntensity
+          );
+          sDummy.scale.set(1, 1 + windIntensity * 2.2, 1 + windIntensity * 1.6);
+          sDummy.updateMatrix();
+          streakMesh.setMatrixAt(i, sDummy.matrix);
+        }
+        streakMesh.instanceMatrix.needsUpdate = true;
+        streakMat.opacity = 0.12 + windIntensity * 0.5;
+      }
+
       // Camera trails behind (larger z) and above the petal, looking ahead.
-      const target = new THREE.Vector3(petalPos.x * 0.6, petalPos.y * 0.55 + 4.2, petalPos.z + 11);
+      // While steering (windIntensity up), pull the camera back so the POV
+      // zooms out and the whole wind effect is in frame.
+      const zoom = 1 + windIntensity * 3.2;
+      const target = new THREE.Vector3(
+        petalPos.x * 0.6 * zoom - camera.rotation.y * windIntensity,
+        petalPos.y * 0.55 + 4.2 + windIntensity * 2.4,
+        petalPos.z + 11 * zoom
+      );
       camera.position.lerp(target, 1 - Math.pow(0.0015, dt));
-      camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30);
+      camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30 - windIntensity * 10);
     },
   };
 
