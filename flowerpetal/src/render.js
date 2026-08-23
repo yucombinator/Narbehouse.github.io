@@ -3,9 +3,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_KINDS } from './trail.js';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
+import { createGrass } from './grass.js?v=5';
 
-export const SKY_TOP = 0x9fd8ff;
-export const SKY_BOTTOM = 0xffe3f0;
+export const SKY_TOP = 0x529ef0;
+export const SKY_BOTTOM = 0xc8e6ff;
 
 // A petal as a rounded teardrop: stretched blob, tapered toward the crown,
 // used in two layers so blooms read as organic petals instead of blobby
@@ -51,8 +52,8 @@ const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5
 const STEM_GEO = new THREE.CylinderGeometry(0.03, 0.05, 1, 6);
 STEM_GEO.translate(0, 0.5, 0);
 const STEM_MAT = new THREE.MeshStandardMaterial({ color: 0x3e8f3e, roughness: 0.8 });
-const STEM_LEN = 2.2;
-const CROWN_LIFT = STEM_LEN + 0.25; // crown height above the terrain
+const STEM_LEN = 3.2;
+const CROWN_LIFT = STEM_LEN + 0.35; // crown height above the terrain (stands above grass)
 
 // Player petal: an elongated, tapered blade along Z (flight direction) — a
 // wider rounded tip and narrower base, like a real flower petal rather than
@@ -82,10 +83,10 @@ function lerp(a, b, t) {
 
 export function initRender(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
   renderer.setSize(window.innerWidth, window.innerHeight);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY_BOTTOM, 90, 320);
+  scene.fog = new THREE.Fog(SKY_BOTTOM, 75, 380);
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 10, 40);
 
@@ -103,64 +104,200 @@ export function initRender(canvas) {
   const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
   scene.add(sky);
 
-  // --- World-fixed ground: ONE plane at world origin, displaced by HILLS at
-  // true world coordinates. Flowers, grass, and the petal's clamp sample the
-  // same function at the same origin, so nothing can float off the surface.
-  // Big enough to cover the whole flight path with grass always on it. The
-  // fog hides the far edge; the terrain stays world-fixed so flowers, grass
-  // and the petal's floor-clamp all sample the same HILLS at the same origin.
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(6000, 6000, 160, 160),
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true })
-  );
-  {
-    const gpos = ground.geometry.attributes.position;
-    const hillColors = [];
-    const cHigh = new THREE.Color(0x7ec850);
-    const cLow = new THREE.Color(0x9ee06a);
-    for (let i = 0; i < gpos.count; i++) {
-      const wx = gpos.getX(i);   // plane local x == world x
-      const wz = gpos.getY(i);   // plane local y is world z after the rotation below
-      const h = HILLS.height(wx, wz);
-      gpos.setZ(i, h);
-      const t = THREE.MathUtils.clamp((h + 5) / 10, 0, 1);
-      const c = cLow.clone().lerp(cHigh, t);
-      hillColors.push(c.r, c.g, c.b);
-    }
-    ground.geometry.setAttribute('color', new THREE.Float32BufferAttribute(hillColors, 3));
-    ground.geometry.computeVertexNormals();
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(0, 0, 0);
-    ground.receiveShadow = true;
-    scene.add(ground);
-  }
+  // --- Infinite Dynamic GPU Terrain: A continuous rolling landscape generated
+  // dynamically on the GPU. Centered on the camera and snapped to the grid so
+  // it extends infinitely in all directions with zero seams or disappearing edges.
+  const hp = HILLS.params;
+  const terrainGeo = new THREE.PlaneGeometry(900, 900, 160, 160);
+  terrainGeo.rotateX(-Math.PI / 2);
 
-  // Grass rides the world terrain. The InstancedMesh stays in world space;
-  // each blade is planted at HILLS(worldX, worldZ) and the whole field
-  // re-centers on the player's (x, z) each frame (local seeds in ±GRASS_R).
-  const GRASS_N = 900;
-  const GRASS_R = 60;
-  const grassGeo = new THREE.PlaneGeometry(0.12, 1.1, 1, 3);
-  grassGeo.translate(0, 0.55, 0);
-  const grassMat = new THREE.MeshBasicMaterial({ color: 0x6fbf4a, side: THREE.DoubleSide });
-  const grass = new THREE.InstancedMesh(grassGeo, grassMat, GRASS_N);
-  grass.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  grass.frustumCulled = false; // re-centers on the player every frame
-  const gDummy = new THREE.Object3D();
-  const grassSeeds = [];
-  for (let i = 0; i < GRASS_N; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(Math.random()) * GRASS_R;
-    grassSeeds.push({
-      x: Math.cos(a) * r,
-      z: Math.sin(a) * r,
-      yaw: Math.random() * Math.PI * 2,
-      s: 0.7 + Math.random() * 0.9,
-      ph: Math.random() * Math.PI * 2,
-      sway: 0.25 + Math.random() * 0.5,
-    });
-  }
-  scene.add(grass);
+  const terrainMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uCameraPos: { value: new THREE.Vector3() },
+      uSunDir: { value: new THREE.Vector3(40, 70, 25).normalize() },
+      uHillsParams1: { value: new THREE.Vector4(hp.a1, hp.f1x, hp.p1x, hp.f1z) },
+      uHillsParams2: { value: new THREE.Vector4(hp.p1z, hp.b1, hp.f2x, hp.p2x) },
+      uHillsParams3: { value: new THREE.Vector4(hp.f2z, hp.p2z, hp.offset, 0) },
+      fogColor: { value: new THREE.Color(SKY_BOTTOM) },
+      fogNear: { value: 75 },
+      fogFar: { value: 380 },
+    },
+    vertexShader: `
+      precision highp float;
+
+      uniform vec3 uCameraPos;
+      uniform vec4 uHillsParams1;
+      uniform vec4 uHillsParams2;
+      uniform vec4 uHillsParams3;
+
+      varying vec3 vWorldPos;
+      varying vec3 vNormal;
+      varying float vElevation;
+
+      float getHillHeight(float x, float z) {
+        float a1 = uHillsParams1.x;
+        float f1x = uHillsParams1.y;
+        float p1x = uHillsParams1.z;
+        float f1z = uHillsParams1.w;
+        
+        float p1z = uHillsParams2.x;
+        float b1 = uHillsParams2.y;
+        float f2x = uHillsParams2.z;
+        float p2x = uHillsParams2.w;
+        
+        float f2z = uHillsParams3.x;
+        float p2z = uHillsParams3.y;
+        float hillOffset = uHillsParams3.z;
+        
+        return hillOffset + 
+          a1 * sin(x * f1x + p1x) * sin(z * f1z + p1z) + 
+          b1 * sin(x * f2x + p2x) * sin(z * f2z + p2z);
+      }
+
+      void main() {
+        // Snap to grid spacing so vertex coordinates don't swim during flight
+        float snap = 5.0;
+        float snapX = floor(uCameraPos.x / snap) * snap;
+        float snapZ = floor(uCameraPos.z / snap) * snap;
+
+        float wx = position.x + snapX;
+        float wz = position.z + snapZ;
+        float wy = getHillHeight(wx, wz);
+
+        vWorldPos = vec3(wx, wy, wz);
+        vElevation = wy;
+
+        // Analytical normals for perfectly smooth hill shading
+        float dhdx = 
+          uHillsParams1.x * uHillsParams1.y * cos(wx * uHillsParams1.y + uHillsParams1.z) * sin(wz * uHillsParams1.w + uHillsParams2.x) +
+          uHillsParams2.y * uHillsParams2.z * cos(wx * uHillsParams2.z + uHillsParams2.w) * sin(wz * uHillsParams3.x + uHillsParams3.y);
+        
+        float dhdz = 
+          uHillsParams1.x * uHillsParams1.w * sin(wx * uHillsParams1.y + uHillsParams1.z) * cos(wz * uHillsParams1.w + uHillsParams2.x) +
+          uHillsParams2.y * uHillsParams3.x * sin(wx * uHillsParams2.z + uHillsParams2.w) * cos(wz * uHillsParams3.x + uHillsParams3.y);
+
+        vNormal = normalize(vec3(-dhdx, 1.0, -dhdz));
+
+        gl_Position = projectionMatrix * viewMatrix * vec4(vWorldPos, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+
+      uniform float uTime;
+      uniform vec3 uCameraPos;
+      uniform vec3 uSunDir;
+      uniform vec3 fogColor;
+      uniform float fogNear;
+      uniform float fogFar;
+
+      varying vec3 vWorldPos;
+      varying vec3 vNormal;
+      varying float vElevation;
+
+      // Organic triangular-axis wave interference (zero checkerboard artifacts)
+      float triWave(vec2 p, float freq) {
+        vec2 q = p * freq;
+        float w1 = sin(q.x);
+        float w2 = sin(-0.5 * q.x + 0.866 * q.y);
+        float w3 = sin(-0.5 * q.x - 0.866 * q.y);
+        return (w1 + w2 + w3) * 0.3333;
+      }
+
+      void main() {
+        vec2 pos = vWorldPos.xz;
+        float distFromCam = length(pos - uCameraPos.xz);
+
+        // Elevation & Slope parameters:
+        float elevNorm = clamp((vElevation + 6.0) / 12.0, 0.0, 1.0);
+
+        // Non-linear domain warping to create organic meadow contours
+        vec2 warp = vec2(
+          sin(pos.x * 0.032 + pos.y * 0.024),
+          cos(pos.x * 0.024 - pos.y * 0.038)
+        );
+        vec2 warpedPos = pos + warp * 16.0;
+
+        // --- Near Turf Shading (Base under 3D grass bouquet)
+        vec3 cSoil = vec3(0.18, 0.30, 0.12);
+        vec3 cLush = vec3(0.28, 0.46, 0.16);
+        vec3 nearBase = mix(cSoil, cLush, elevNorm);
+
+        // Smooth non-checkerboard near organic variations
+        float nearVariation = (sin(pos.x * 0.3 + sin(pos.y * 0.4)) + cos(pos.y * 0.3 + sin(pos.x * 0.35))) * 0.025;
+        nearBase += vec3(nearVariation, nearVariation * 1.3, nearVariation * 0.4);
+
+        // --- Distant Procedural Meadow Landscape (blends in smoothly from 45m to 105m)
+        float farBlend = smoothstep(45.0, 105.0, distFromCam);
+
+        // 1. Organic botanical patches (large rolling meadow zones)
+        float macroPattern = triWave(warpedPos, 0.045);
+        float midPattern   = triWave(warpedPos + vec2(17.3, 41.8), 0.11);
+        float meadowNoise  = macroPattern * 0.65 + midPattern * 0.35;
+
+        // 2. Botanical color palette
+        vec3 colMeadow = vec3(0.30, 0.52, 0.18); // Classic prairie sage-olive
+        vec3 colWheat  = vec3(0.56, 0.64, 0.24); // Golden rye on sunlit hilltops
+        vec3 colClover = vec3(0.16, 0.34, 0.10); // Deep velvety clover in valley hollows
+
+        // Blend colors based on organic terrain topology (elevation + organic noise)
+        float ridgeFactor = smoothstep(0.35, 0.85, elevNorm + meadowNoise * 0.35);
+        float valleyFactor = smoothstep(0.45, 0.15, elevNorm - meadowNoise * 0.30);
+
+        vec3 farMeadow = mix(colMeadow, colWheat, ridgeFactor);
+        farMeadow = mix(farMeadow, colClover, valleyFactor);
+
+        // 3. Fine grass tufts & stippling (rotated non-grid coordinates, distance-attenuated)
+        mat2 rot45 = mat2(0.707, -0.707, 0.707, 0.707);
+        vec2 rotPos = rot45 * pos;
+        float tuftA = sin(rotPos.x * 1.8 + sin(rotPos.y * 1.5)) * 0.5 + 0.5;
+        float tuftB = sin(pos.x * 3.4 - pos.y * 2.6) * 0.5 + 0.5;
+        
+        float microAtten = 1.0 - smoothstep(90.0, 240.0, distFromCam);
+        float grassStipple = (tuftA * 0.6 + tuftB * 0.4 - 0.5) * microAtten * 0.14;
+        farMeadow += vec3(grassStipple * 1.1, grassStipple * 1.4, grassStipple * 0.5);
+
+        // 4. Harmonious rolling wind wave swells across distant hills
+        float distAlongWind = -vWorldPos.z;
+        float distCrossWind = vWorldPos.x;
+        float wavePhase = distAlongWind * 0.24 - uTime * 1.25 + sin(distCrossWind * 0.035) * 0.45;
+        float gustWave = sin(wavePhase) * 0.5 + 0.5;
+        float gustSheen = gustWave * gustWave * (0.07 + 0.06 * elevNorm);
+        farMeadow += vec3(0.10, 0.13, 0.03) * gustSheen;
+
+        // Seamless transition from near turf to far meadow
+        vec3 baseColor = mix(nearBase, farMeadow, farBlend);
+
+        vec3 sunDir = normalize(uSunDir);
+        float nDotL = max(0.0, dot(vNormal, sunDir));
+        vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.68 + 0.22);
+        vec3 skyLight = vec3(0.75, 0.88, 1.0) * 0.48;
+
+        vec3 finalColor = baseColor * (skyLight + sunLight);
+
+        float depth = gl_FragCoord.z / gl_FragCoord.w;
+        float fogFactor = clamp((depth - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+        fogFactor = pow(fogFactor, 1.2);
+        finalColor = mix(finalColor, fogColor, fogFactor);
+
+        gl_FragColor = vec4(finalColor, 1.0);
+      }
+    `,
+  });
+
+  const ground = new THREE.Mesh(terrainGeo, terrainMat);
+  ground.receiveShadow = true;
+  ground.frustumCulled = false;
+  scene.add(ground);
+
+  // --- Grass: A lush, billowy meadow across 3 botanical varieties
+  // (Prairie Meadow, Tall Golden Rye, and Broad Clover) with Euler Elastica curves.
+  const grass = createGrass({
+    scene,
+    hillsParams: hp,
+    skyBottom: SKY_BOTTOM,
+  });
 
   // --- Player: a swirling wreath of petals ("I am the wind, not the flower").
   // No center bloom, no heart — just loose petals circling a point.
@@ -496,24 +633,14 @@ export function initRender(canvas) {
         m.material.transparent = true;
       }
 
-      // Grass: field centered on the petal in world space; each blade is
-      // planted at HILLS(world) and bends with wind + proximity.
-      const swayBase = Math.sin(timeSec * 1.4) * 0.18;
-      for (let i = 0; i < GRASS_N; i++) {
-        const s = grassSeeds[i];
-        const wx = petalPos.x + s.x;
-        const wz = petalPos.z + s.z;
-        const dist = Math.hypot(s.x, s.z);
-        const prox = Math.max(0, 1 - dist / 18);
-        const bend = prox * prox * (s.sway * (0.5 + 0.5 * Math.sin(timeSec * 2.2 + s.ph)));
-        gDummy.position.set(wx, HILLS.height(wx, wz), wz);
-        gDummy.rotation.y = Math.atan2(s.x, s.z);
-        gDummy.rotation.z = (swayBase + bend) * -Math.sign(s.x || 0.001);
-        gDummy.scale.set(1, s.s, 1);
-        gDummy.updateMatrix();
-        grass.setMatrixAt(i, gDummy.matrix);
-      }
-      grass.instanceMatrix.needsUpdate = true;
+      // Terrain & Grass shader uniforms update (zero per-instance CPU loop)
+      terrainMat.uniforms.uCameraPos.value.copy(camera.position);
+      terrainMat.uniforms.uTime.value = timeSec;
+      grass.update(timeSec, petalPos, bank, wind, camera.position);
+
+      // Sun and shadow follow the player smoothly down the meadow
+      sun.position.set(petalPos.x + 40, 70, petalPos.z + 25);
+      sun.target.position.set(petalPos.x, petalPos.y, petalPos.z);
 
       // Flowers: planted on the terrain in true world coords (meshes at origin).
       if (budMeshes.length) {
@@ -586,15 +713,15 @@ export function initRender(canvas) {
         }
       }
 
-      // Mother bloom: ride the terrain + pulse.
+      // Mother bloom: ride the terrain + pulse in true world coords.
       if (mother.visible) {
         const m = 1 + Math.sin(timeSec * 1.8) * 0.08;
         mother.scale.setScalar(m);
         mother.rotation.z += dt * 0.4;
         mother.position.set(
-          mother.userData.wx - camera.position.x,
-          HILLS.height(mother.userData.wx, mother.userData.wz) + 1.2,
-          mother.userData.wz - camera.position.z
+          mother.userData.wx,
+          HILLS.height(mother.userData.wx, mother.userData.wz) + 1.8,
+          mother.userData.wz
         );
       }
 
@@ -649,7 +776,7 @@ export function initRender(canvas) {
       // Camera trails behind (larger z) and above the petal, looking ahead.
       // While steering (windIntensity up), pull the camera back so the POV
       // zooms out and the whole wind effect is in frame.
-      	      const zoom = 1 + windIntensity * 1.6;
+      const zoom = 1 + windIntensity * 1.6;
       const target = new THREE.Vector3(
         petalPos.x * 0.6 * zoom - camera.rotation.y * windIntensity,
         petalPos.y * 0.55 + 4.2 + windIntensity * 2.4,
@@ -713,11 +840,13 @@ export function initRender(canvas) {
         mesh.setColorAt(local, new THREE.Color(buds[idx].colorHex));
       });
       mesh.castShadow = true;
+      mesh.frustumCulled = false;
       scene.add(mesh);
       budMeshes[k] = mesh;
 
       // A stem beneath each crown of this kind.
       const stems = new THREE.InstancedMesh(STEM_GEO, STEM_MAT, indices.length);
+      stems.frustumCulled = false;
       const sd = new THREE.Object3D();
       indices.forEach((idx, local) => {
         const b = buds[idx];

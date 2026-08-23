@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize } from './render.js?v=4';
+import { initRender, resize } from './render.js?v=11';
 import { generateTrail, CRUISE_SPEED } from './trail.js?v=2';
 import { advance } from './steer.js';
 import { collectBud, tintFor } from './growth.js';
@@ -119,7 +119,7 @@ let petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0, y: tra
 // Invariant: the petal never dips below the terrain. Applied every frame so
 // wind, assist, or teleports cannot bury us underground.
 function clampAboveGround() {
-  const floor = HILLS.height(petal.x, petal.z) + 0.8;
+  const floor = HILLS.height(petal.x, petal.z) + 1.4;
   if (petal.y < floor) petal.y = floor;
 }
 let meadowBuds = 0;
@@ -360,7 +360,7 @@ function bloomCheck() {
   updateHud();
 }
 
-const FLOAT_ALT = 3.2; // cruise height above terrain when no flowers to catch
+const FLOAT_ALT = 3.6; // cruise height above terrain when no flowers to catch
 function flightTargetY() {
   // We follow the terrain at FLOAT_ALT, but dip down toward an uncollected
   // flower when one is close ahead — "float up when there's nothing to catch".

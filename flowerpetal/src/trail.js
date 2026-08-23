@@ -16,7 +16,7 @@ export const CLUSTER_MIN = 2;           // flowers per bunch (fewer)
 export const CLUSTER_MAX = 4;
 export const ALT_AMPLITUDE = 3.0;       // max |y(z) - HILL_OFFSET| flight path
 export const BUD_SPREAD = CLUSTER_RADIUS + 2.2; // corridor spread used by tests
-export const FLY_ALT = 3.2;             // how high above the ground the petal cruises
+export const FLY_ALT = 3.6;             // how high above the ground the petal cruises
 
 export const PALETTE = [
   0xffd1dc, 0xb3e1ff, 0xc7f0c7, 0xfff3b0, 0xdcc8ff, 0xffc9a8,
@@ -71,11 +71,9 @@ export function generateTrail({ seed, length = 400 }) {
       const r = Math.sqrt(rand()) * CLUSTER_RADIUS;
       const bx = cx + Math.cos(a) * r;
       const bz = cz + Math.sin(a) * r;
-      const by = HILLS.height(bx, bz) + 2.4;
       const kind = Math.floor(rand() * FLOWER_KINDS.length);
-      // Flowers grow on stems above the ground; the crown floats clear of
-      // terrain bumps (the renderer raises it by CROWN_LIFT too).
-      const gy = HILLS.height(bx, bz) + 2.4;
+      // Flowers grow on stems sticking just above the grass field
+      const gy = HILLS.height(bx, bz) + 3.55;
       buds.push({
         x: bx,
         y: gy,
@@ -95,7 +93,7 @@ export function generateTrail({ seed, length = 400 }) {
   for (const b of buds) {
     b.kindIndex = kindCounts[b.kind]++;
   }
-  const mother = { x: curveX(zEnd), y: HILLS.height(curveX(zEnd), zEnd) + 1.2, z: zEnd };
+  const mother = { x: curveX(zEnd), y: HILLS.height(curveX(zEnd), zEnd) + 3.2, z: zEnd };
 
   // Analytic worst-case second derivative (true upper bound).
   const curvatureBound = amps.reduce((s, a, i) => s + a * freqs[i] * freqs[i], 0);

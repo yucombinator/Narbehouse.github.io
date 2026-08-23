@@ -20,6 +20,7 @@ export function createHills(seed = 7) {
   const p2z = 0.3 + rand();
 
   return {
+    params: { a1, b1, f1x, f1z, p1x, p1z, f2x, f2z, p2x, p2z, offset: HILL_OFFSET },
     // Height of the ground at a world (x, z). Matches the rendered plane.
     height(x, z) {
       return (
