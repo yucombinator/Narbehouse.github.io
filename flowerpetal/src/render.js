@@ -626,9 +626,14 @@ export function initRender(canvas) {
           const pxw = petalPos.x + ex * depth + latX;
           const pzw = petalPos.z + ez * depth + Math.sin(s.ang * 2 + timeSec * 0.7) * 0.4;
           sDummy.position.set(pxw, petalPos.y + latY, pzw);
-          // Long axis along the travel direction; slight flutter while flowing.
-          sDummy.rotation.y = Math.atan2(ex, ez || 0.0001) * -1;
-          sDummy.rotation.z = Math.sin(s.ang * 2 + timeSec * 0.9) * 0.08;
+          // The plane's long axis is local +Y. Map that axis EXACTLY onto the
+          // flow direction with a unit-vector rotation — the only robust way
+          // to align a plane edge to a world direction.
+          sDummy.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            new THREE.Vector3(ex, 0, ez).normalize()
+          );
+          sDummy.rotateZ(Math.sin(s.ang * 3 + timeSec * 1.1) * 0.25);
           sDummy.scale.set(1, 1 + windIntensity * 1.0, 1 + windIntensity * 2.2);
           sDummy.updateMatrix();
           streakMesh.setMatrixAt(i, sDummy.matrix);
