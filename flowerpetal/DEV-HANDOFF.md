@@ -46,7 +46,7 @@ flowerpetal/
     meadow.js          # PURE: meadow-lifecycle transition (seed+1, blooms+1)
     state.js           # PURE: localStorage save/load with injected storage (memory-store in tests)
     notes.js           # PURE: pentatonic pitch ladder for collection chimes
-    audio.js           # synthesized chime/bloom chords (WebAudio; safe before gesture)
+    audio.js           # synthesized SFX + generative ambient pad (WebAudio; no assets)
   test/                # node --test suites for every PURE module above
 ```
 
@@ -68,7 +68,7 @@ flowerpetal/
 | Wind assist | If nearest uncollected bud's |dx| > `WIND_THRESHOLD = 16`, gentle lateral nudge `1.2 u/s` toward it + a pull-you-back guarantee. **No hard loss exists** |
 | Meadow end | Collect all buds → `allBloomed` → touch mother (within `BLOOM_REACH = 5`) → `seed+1`, new trail, size persists |
 | Save | `localStorage['petalBloom.save'] = {size,totalBuds,blooms}` autosaved on every collect + every bloom; two-step reset (`btnReset` → confirm → `btnDoReset`) |
-| Audio | Pentatonic ladder `noteFor(step)` (3 octaves, capped), chime per bud; Cmaj chord on bloom; synthesized only, no assets |
+| Audio | Pentatonic ladder `noteFor(step)`, chime per bud; Cmaj chord on bloom; **generative ambient pad** (Dm9→Cadd9→Am9→Fmaj7 drone + pentatonic sparkle bells + LFO breathing); all synthesized, zero assets/free-to-use; Start begins it (user gesture), `M`/title-checkbox toggles, and pref in `localStorage['petalBloom.ambient']` |
 
 ## 5. Architectural invariants (do not break casually)
 

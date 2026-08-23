@@ -131,6 +131,34 @@ const storage = (() => {
     return null;
   }
 })();
+const AMBIENT_KEY = 'petalBloom.ambient';
+const ambientCheck = document.getElementById('ambientOn');
+if (ambientCheck) {
+  // Restore the player's ambient preference (default on).
+  try {
+    ambientCheck.checked = storage.getItem(AMBIENT_KEY) !== '0';
+  } catch {
+    ambientCheck.checked = true;
+  }
+  const applyAmbient = () => {
+    const on = ambientCheck.checked;
+    try {
+      storage.setItem(AMBIENT_KEY, on ? '1' : '0');
+    } catch { /* storage unavailable */ }
+    if (!audio) return;
+    if (on) audio.startAmbient();
+    else audio.stopAmbient();
+  };
+  ambientCheck.addEventListener('change', applyAmbient);
+  // M toggles ambient music at any time.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'm' || e.key === 'M') {
+      ambientCheck.checked = !ambientCheck.checked;
+      ambientCheck.dispatchEvent(new Event('change'));
+      e.preventDefault();
+    }
+  });
+}
 
 function saveProgress() {
   if (!storage) return;
@@ -170,6 +198,7 @@ window.__petalGame = {
     return { x: trail.mother.x, y: trail.mother.y, z: trail.mother.z };
   },
 };
+window.__petalAudio = audio;
 
 function updateHud() {
   const hud = document.getElementById('hudCount');
@@ -294,6 +323,8 @@ function startGame() {
 	loadProgress();
 	render.setPetalSize(size);
 	render.setPetalGlow((size - 1) / (MAX_SIZE - 1));
+	// Begin the ambient pad on this user gesture (autoplay policy).
+	if (audio && ambientCheck && ambientCheck.checked) audio.startAmbient();
 	titleEl.style.display = 'none';
 	updateHud();
 }

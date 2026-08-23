@@ -15,8 +15,18 @@ your petal never shrinks.
 | `ArrowLeft`, `A`, `Space` | Steer left |
 | `ArrowRight`, `D`, `Enter` | Steer right |
 | Click/tap left or right half of the canvas | Steer that way |
+| `M` | Toggle ambient music (also on the title card) |
 
 Holding both turns straight. Releasing both returns to level flight.
+
+## Audio
+
+All sound is **synthesized at runtime** (WebAudio) — no audio files, so nothing
+to license or attribute. The spacey/relaxing background is a generative
+ambient pad: a slow crossfading chord drone (Dm9 → Cadd9 → Am9 → Fmaj7) plus
+sparse pentatonic sparkle bells, with a breathing LFO. Collection chimes climb
+a pentatonic ladder; the meadow bloom plays a soft C-major chord. Toggle the
+ambient with `M` or the title-card checkbox; your preference is remembered.
 
 ## Run it
 

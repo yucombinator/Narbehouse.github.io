@@ -34,7 +34,13 @@
     background: #fff; border: 4px solid #5a2a4a; border-radius: 18px;
     padding: 18px 44px; min-width: 220px;
   }
-  .bigbtn:focus-visible { outline: 5px solid #ff9ec0; }
+  	  .bigbtn:focus-visible { outline: 5px solid #ff9ec0; }
+	  .ambient-toggle {
+	    font-size: 22px; color: #5a2a4a; cursor: pointer; user-select: none;
+	    display: inline-flex; align-items: center; gap: 10px;
+	  }
+	  .ambient-toggle input { width: 26px; height: 26px; accent-color: #ff9ec0; cursor: pointer; }
+	  .tinyhint { font-size: 15px; opacity: 0.7; }
   .bigbtn.grow { animation: breathe 1.4s ease-in-out infinite; }
   @keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
   #confirm {
@@ -71,11 +77,14 @@
   <h1>🌸 Petal Bloom</h1>
   <p>Hold <strong>LEFT</strong> or <strong>RIGHT</strong> to steer.<br>
      Follow the glowing trail. Collect the buds. Grow big. Forever.</p>
-  <div class="btnrow">
-    <button id="btnStart" class="bigbtn grow" type="button">Start</button>
-    <button id="btnReset" class="bigbtn" type="button">Reset progress</button>
-  </div>
-</div>
+  	  <div class="btnrow">
+	    <button id="btnStart" class="bigbtn grow" type="button">Start</button>
+	    <button id="btnReset" class="bigbtn" type="button">Reset progress</button>
+	  </div>
+	  <label class="ambient-toggle" for="ambientOn">
+	    <input type="checkbox" id="ambientOn" checked> Ambient music <span class="keyhint">(M)</span>
+	  </label>
+	</div>
 
 <div id="confirm" role="alertdialog" aria-modal="true">
   <h2>Reset all progress?</h2>
