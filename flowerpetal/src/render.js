@@ -75,6 +75,11 @@ const PETAL_RING_R = 0.3;
 
 const KIND_SCALE = [1.0, 1.05, 0.92, 1.1];
 
+// Linear interpolation helper (the frame eases petals toward their slot).
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
 export function initRender(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -169,6 +174,7 @@ export function initRender(canvas) {
   let nowSec = 0; // game clock, cached from frame() for eases
   let petalGeometry = PETAL_GEO; // upgraded to the CC-BY model when loaded
   let windIntensity = 0; // 0 = calm, 1 = full wind rush (ramps with steering)
+  const trailHistory = []; // {x,y,z} recent flight positions for the petal trail
 
   // Add ONE new petal (ease-in) without disturbing the existing swarm.
   // Existing petals keep their orbits/poses; only the next one appears small
@@ -415,41 +421,42 @@ export function initRender(canvas) {
       petal.position.set(petalPos.x, petalPos.y, petalPos.z);
       petal.rotation.z = bank * 0.6;
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
-      // Wind intensity eases toward the steering input so the breeze visibly
-      // picks up when banking and calms when cruising straight.
+      // Wind intensity eases toward the steering input.
       	      windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 1.1));
-      // Wind-swirl: each petal churns around its own orbit — speed and
-      // direction vary per petal, offset by the live wind (swayVx), so the
-      // wreath tumbles with the breeze instead of circling rigidly.
+      // Trail: record the recent path; petals stream behind like a comet.
+      trailHistory.unshift({ x: petalPos.x, y: petalPos.y, z: petalPos.z });
+      if (trailHistory.length > MAX_PETALS + 2) trailHistory.pop();
       const wind = windAt(timeSec, 11);
       const windBias = Math.max(-1, Math.min(1, wind.swayVx));
       for (let i = 0; i < petalMeshes.length; i++) {
         const m = petalMeshes[i];
         const u = m.userData;
-        // Ease-in for a freshly acquired petal: ~1s smoothstep from the swarm
-        // centre (small) to its own orbit (full size), so new petals drift
-        // out instead of snapping into place.
+        // Ease-in for a freshly acquired petal.
         let ease = 1;
         if (u.born >= 0) {
           const age = timeSec - u.born;
           const k = Math.min(1, age / 1.0);
-          ease = k * k * (3 - 2 * k); // smoothstep
+          ease = k * k * (3 - 2 * k);
         }
-        // Orbit advances slowly; wind nudges the phase gently downstream.
-        u.orbit += dt * u.dir * u.speed * 0.22 + windBias * dt * 0.35;
-        const rad = u.radius0 * (1 + 0.1 * Math.sin(timeSec * u.breathe + u.ph0));
-        // Compact elliptical sway, barely moving; z bobs a little for depth.
-        const px = Math.cos(u.orbit) * rad;
-        const py = Math.sin(u.orbit) * rad * u.flat + 0.06 * Math.sin(timeSec * u.tumble + u.ph0);
-        const pz = u.z0 + Math.sin(timeSec * 1.1 + u.orbit * 2) * u.zdepth * 0.35;
-        	      m.position.set(px * ease, py * ease, pz * ease);
-	      // Petals puff out and churn harder while the wind rushes (steering).
-	      m.scale.setScalar((0.3 + ease * 0.7) * (1 + windIntensity * 0.18));
-	      // Orient with the wind around each petal's OWN rest pose; the
-	      // wobble amplitude and speed grow with the wind rush.
-	      m.rotation.x = u.basePitch + windBias * (0.18 + windIntensity * 0.35) + Math.sin(timeSec * (1.4 + windIntensity * 1.6) + u.ph0) * (0.06 + windIntensity * 0.2);
-	      m.rotation.y = u.baseYaw + Math.sin(timeSec * (1.1 + windIntensity * 1.1) + u.ph0 * 2) * (0.08 + windIntensity * 0.2);
-	      m.rotation.z = u.baseRoll + Math.sin(timeSec * (0.9 + windIntensity * 1.3) + u.ph0) * (0.1 + windIntensity * 0.24);
+        // Slot: petals chase the path point `i+1` steps back, with per-petal
+        // lateral drift so they trail in a loose ribbon, not a single line.
+        u.orbit += dt * u.dir * u.speed * 0.3; // slow personal wander
+        const slot = trailHistory[Math.min(i + 1, trailHistory.length - 1)] || petalPos;
+        const lat = Math.sin(u.ph0 + timeSec * 0.6) * 0.7;
+        const lat2 = Math.cos(u.ph0 * 2 + timeSec * 0.8) * 0.5;
+        const px = slot.x + lat + windBias * 0.7;
+        const py = slot.y + lat2 * 0.4;
+        const pz = slot.z;
+        m.position.set(
+          lerp(m.position.x, px, ease),
+          lerp(m.position.y, py, ease),
+          lerp(m.position.z, pz, ease)
+        );
+        m.scale.setScalar((0.3 + ease * 0.7) * (1 + windIntensity * 0.18));
+        // Orient along the trail direction with per-petal rest pose.
+        m.rotation.x = u.basePitch + windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
+        m.rotation.y = u.baseYaw + Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
+        m.rotation.z = u.baseRoll + Math.sin(timeSec * 0.9 + u.ph0) * 0.1;
       }
 
       // Grass: field centered on the petal in world space; each blade is
