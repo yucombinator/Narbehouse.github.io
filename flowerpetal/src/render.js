@@ -985,7 +985,10 @@ export function initRender(canvas) {
       budTimes[index] = 0;
     },
     setPetalSize(s) {
-      petal.scale.setScalar(s);
+      // Global size trim: the game's growth mechanic still applies, but the
+      // petals render smaller so the trailing ribbon of collected colours
+      // stays readable on screen.
+      petal.scale.setScalar(s * 0.55);
     },
     addPetal(hex, from = null) {
       if (petalColors.length >= MAX_PETALS) {
@@ -1097,10 +1100,12 @@ export function initRender(canvas) {
           pz = u.z0 + Math.sin(timeSec * 1.1 + a * 2) * u.zdepth * 0.35;
         } else {
           const tIdx = i - RING_PETALS;
-          const lag = 2.4 + tIdx * 2.6;
-          const spiral = 0.5 + tIdx * 0.1;
+          // Tighter spacing so the whole collected ribbon stays on screen:
+          // a string of many small petals instead of a few large ones.
+          const lag = 1.7 + tIdx * 1.55;
+          const spiral = 0.42 + tIdx * 0.07;
           px = Math.cos(u.orbit + timeSec * 0.8) * spiral + windBias * 0.8;
-          py = Math.sin(u.orbit * 1.7 + timeSec * 0.7) * 0.3 + Math.cos(u.ph0 + timeSec * 0.5) * 0.3;
+          py = Math.sin(u.orbit * 1.7 + timeSec * 0.7) * 0.26 + Math.cos(u.ph0 + timeSec * 0.5) * 0.24;
           pz = lag;
         }
         // Fresh pickup: the new petal FLIES IN from the flower it came from.
@@ -1323,8 +1328,8 @@ export function initRender(canvas) {
       // from the camera and the trail streams 12–25 out, so the band is wide
       // (6–20) to actually be visible during play, not just on a head-on
       // dive into the lens.
-      const FADE_NEAR = 7;
-      const FADE_FAR = 22;
+      const FADE_NEAR = 5;
+      const FADE_FAR = 18;
       for (let i = 0; i < petalMeshes.length; i++) {
         const m = petalMeshes[i];
         const u = m.userData;
@@ -1335,7 +1340,9 @@ export function initRender(canvas) {
           camera.position.z - u.worldZ
         );
         const alpha = Math.min(1, Math.max(0, (camDist - FADE_NEAR) / (FADE_FAR - FADE_NEAR)));
-        m.material.uniforms.uOpacity.value = 0.1 + 0.9 * alpha; // nearly gone when right at the lens
+        // Small petals stay readable: higher opacity floor and a gentler
+        // fade so the ribbon reads as solid colour, not mist.
+        m.material.uniforms.uOpacity.value = 0.22 + 0.78 * Math.pow(alpha, 0.8);
       }
     },
   };
