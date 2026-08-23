@@ -4,8 +4,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 export const SKY_TOP = 0x9fd8ff;
 export const SKY_BOTTOM = 0xffe3f0;
 
-// A radially symmetric 5-petal flower lying in the XY plane (faces the camera
-// whichever way it is viewed from). Built once, shared by player/buds/mother.
+// A radially symmetric 5-petal flower lying in the XY plane (faces the camera).
+// Used for trail buds and the mother bloom.
 function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5 } = {}) {
   const parts = [];
   const petalGeo = new THREE.SphereGeometry(petalRadius, 8, 6);
@@ -21,9 +21,17 @@ function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 
   return mergeGeometries(parts);
 }
 
-const PLAYER_FLOWER = buildFlowerGeometry({ petalRadius: 0.42, centerRadius: 0.19 });
 const BUD_FLOWER = buildFlowerGeometry({ petalRadius: 0.55, centerRadius: 0.24 });
 const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5 });
+
+// A single petal: a flattened ellipsoid elongated along +x, so it can be
+// rotated and placed radially. The player starts with ONE of these and
+// accumulates more (up to MAX_PETALS) as flowers are collected.
+const PETAL_GEO = new THREE.SphereGeometry(0.34, 8, 6);
+PETAL_GEO.scale(1.6, 0.75, 0.3);
+const PETAL_HEART_GEO = new THREE.SphereGeometry(0.15, 8, 6);
+export const MAX_PETALS = 8;
+const PETAL_RING_R = 0.3; // base radius the petal bases sit on
 
 export function initRender(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -61,17 +69,55 @@ export function initRender(canvas) {
   ground.position.y = -3;
   scene.add(ground);
 
-  // Player flower (the petal).
-  const petalMat = new THREE.MeshStandardMaterial({
-    color: 0xff9ec0,
-    emissive: 0x9a3f66,
-    emissiveIntensity: 0.55,
-    roughness: 0.4,
-  });
+  // --- Player: a ring of petals that grows as flowers are collected -----
+  // `petal` is the world group (position, bank roll, size). `petalRing`
+  // carries the individual petal meshes and slowly swirls.
   const petal = new THREE.Group();
-  const petalMesh = new THREE.Mesh(PLAYER_FLOWER, petalMat);
-  petal.add(petalMesh);
+  const petalRing = new THREE.Group();
+  petal.add(petalRing);
   scene.add(petal);
+
+  const petalMats = [];
+  const petalMeshes = [];
+  let petalColors = [0xff9ec0]; // start as a single pink petal
+
+  function rebuildPetals() {
+    // Tear down the old ring.
+    for (const m of petalMeshes) {
+      petalRing.remove(m);
+      m.material.dispose();
+    }
+    petalMeshes.length = 0;
+    petalMats.length = 0;
+    const count = Math.max(1, Math.min(MAX_PETALS, petalColors.length));
+
+    for (let i = 0; i < count; i++) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: petalColors[i] ?? petalColors[petalColors.length - 1],
+        emissive: petalColors[i] ?? petalColors[petalColors.length - 1],
+        emissiveIntensity: 0.4,
+        roughness: 0.4,
+      });
+      const m = new THREE.Mesh(PETAL_GEO, mat);
+      // Spread evenly around the circle; slight radius/rotation jitter keeps
+      // it organic as new petals join.
+      const angle = (i / count) * Math.PI * 2;
+      const r = PETAL_RING_R * (0.85 + Math.random() * 0.35);
+      m.position.set(Math.cos(angle) * r, Math.sin(angle) * r, 0);
+      m.rotation.z = angle + (Math.random() - 0.5) * 0.35; // point outward
+      petalRing.add(m);
+      petalMeshes.push(m);
+      petalMats.push(mat);
+    }
+    // Small heart in the center.
+    if (!petalRing.userData.heart) {
+      petalRing.userData.heart = new THREE.Mesh(
+        PETAL_HEART_GEO,
+        new THREE.MeshStandardMaterial({ color: 0xffd98a, emissive: 0xffb44d, emissiveIntensity: 0.5 })
+      );
+      petalRing.add(petalRing.userData.heart);
+    }
+  }
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.7);
   const sun = new THREE.DirectionalLight(0xffffff, 1.1);
@@ -122,10 +168,7 @@ export function initRender(canvas) {
     renderer,
     petal,
     flowerStats() {
-      return {
-        playerVertices: PLAYER_FLOWER.getAttribute('position').count,
-        budVertices: BUD_FLOWER.getAttribute('position').count,
-      };
+      return { petalCount: petalColors.length, budVertices: BUD_FLOWER.getAttribute('position').count };
     },
     setTrail(buds, motherPos) {
       scaleBuds(buds);
@@ -150,22 +193,31 @@ export function initRender(canvas) {
     setPetalSize(s) {
       petal.scale.setScalar(s);
     },
+    // Add a petal of the collected flower's color (organic ring re-spread).
+    addPetal(hex) {
+      petalColors.push(hex);
+      if (petalColors.length > MAX_PETALS) petalColors.shift();
+      rebuildPetals();
+    },
+    // Restore a petal count on load (fills with the current tint).
+    setPetalCount(n) {
+      const cur = petalColors[petalColors.length - 1] ?? 0xff9ec6;
+      petalColors = Array.from({ length: Math.max(1, Math.min(MAX_PETALS, n)) }, () => cur);
+      rebuildPetals();
+    },
     // Growth glow: raise emissive a touch as size nears the cap.
     setPetalGlow(progress) {
-      petalMat.emissiveIntensity = 0.35 + progress * 0.6;
-    },
-    // Wear the color of the flower just collected.
-    wearColor(hex) {
-      const c = new THREE.Color(hex);
-      petalMat.color.copy(c);
-      petalMat.emissive.copy(c);
+      const intensity = 0.35 + progress * 0.6;
+      for (const mat of petalMats) mat.emissiveIntensity = intensity;
     },
     frame(dt, petalPos, bank, timeSec) {
       petal.position.set(petalPos.x, petalPos.y, petalPos.z);
       petal.rotation.z = bank * 0.6;
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
+      // Organic swirl: the whole petal ring slowly circles.
+      petalRing.rotation.z = timeSec * 0.5;
 
-      // Pulse remaining buds subtly; grow collected ones out.
+      // Pulse remaining buds subtly; shrink collected ones out.
       if (budMesh) {
         const dummy = new THREE.Object3D();
         for (let i = 0; i < budData.length; i++) {
@@ -252,8 +304,9 @@ export function initRender(canvas) {
     scene.add(budMesh);
   }
 
+  rebuildPetals();
   api.setPetalSize(1);
-  api.wearColor(0xff9ec0);
+  api.setPetalGlow(0);
   return api;
 }
 

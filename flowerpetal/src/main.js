@@ -229,7 +229,7 @@ function checkCollection() {
     meadowBuds = st.meadowBuds;
     collectedSet.add(best.i);
     render.collectPop(best.i);
-    render.wearColor(trail.buds[best.i].colorHex); // become the flower you touched
+    render.addPetal(trail.buds[best.i].colorHex); // a new petal joins the ring
     if (audio) audio.chime(noteFor(totalBuds + collectedSet.size)); // ladder continues across meadows
     if (st.doesBloom) {
       allBloomed = true;
@@ -322,6 +322,7 @@ function startGame() {
 	isTitleOpen = false;
 	loadProgress();
 	render.setPetalSize(size);
+	render.setPetalCount(Math.min(8, 1 + Math.floor(totalBuds)));
 	render.setPetalGlow((size - 1) / (MAX_SIZE - 1));
 	// Begin the ambient pad on this user gesture (autoplay policy).
 	if (audio && ambientCheck && ambientCheck.checked) audio.startAmbient();
