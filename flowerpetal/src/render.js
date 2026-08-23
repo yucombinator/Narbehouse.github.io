@@ -357,6 +357,7 @@ export function initRender(canvas) {
       spin: 0.3 + Math.random() * 0.3,
       r: 1.6 + Math.random() * 1.6,
       yoff: (Math.random() - 0.5) * 1.6,
+      progress: Math.random(), // 0 (at petal) .. 1 (at camera)
     });
   }
   scene.add(streakMesh);
@@ -605,10 +606,11 @@ export function initRender(canvas) {
         c.position.z = camera.position.z + c.userData.zo;
       }
 
-      // Wind streaks: linear flow along the travel direction. The camera
-      // trails the flight path, so lines run from the petals toward the
-      // camera — like streamers in a headwind. They bend naturally when the
-      // path curves, carrying the sense of motion without fake spinning.
+      // Wind streaks: linear flow along the travel direction. When the player
+      // banks (windIntensity up), the air rushes past visibly faster — the
+      // slivers stream along the axis at a speed proportional to the steering,
+      // and they lean/slip back so the motion reads as sustained rush.
+      const flowSpeed = 2.2 + windIntensity * 18; // world units/s along flow
       if (streakMat) {
         const dirX = camera.position.x - petalPos.x;
         const dirZ = camera.position.z - petalPos.z;
@@ -618,23 +620,25 @@ export function initRender(canvas) {
         const sDummy = new THREE.Object3D();
         for (let i = 0; i < STREAK_N; i++) {
           const s = streakSeeds[i];
-          // Place each sliver between petal and camera (along the flow) with
-          // a jittered lateral offset so they form a loose bundle of wind.
-          const depth = 1.6 + s.r * (1 + windIntensity * 0.5);
+          // Each sliver has a flow progress along the petal->camera axis;
+          // advance it with the wind speed and wrap it back to the petal.
+          s.progress += (flowSpeed * dt) / (s.r * 1.2 + 1.5);
+          if (s.progress > 1) {
+            s.progress = 0;
+            s.ang = Math.random() * Math.PI * 2;
+          }
           const latX = Math.cos(s.ang + timeSec * s.spin) * (0.7 + s.r * 0.3);
           const latY = Math.sin(s.ang * 1.7 + timeSec * s.spin * 0.8) * 0.5 + s.yoff;
-          const pxw = petalPos.x + ex * depth + latX;
-          const pzw = petalPos.z + ez * depth + Math.sin(s.ang * 2 + timeSec * 0.7) * 0.4;
+          const pxw = petalPos.x + ex * s.progress * dirLen * 0.8 + latX;
+          const pzw = petalPos.z + ez * s.progress * dirLen * 0.8 + Math.sin(s.ang * 2 + timeSec * 0.7) * 0.4;
           sDummy.position.set(pxw, petalPos.y + latY, pzw);
-          // The plane's long axis is local +Y. Map that axis EXACTLY onto the
-          // flow direction with a unit-vector rotation — the only robust way
-          // to align a plane edge to a world direction.
+          // Long axis along the flow; faster flow streaks lean more.
           sDummy.quaternion.setFromUnitVectors(
             new THREE.Vector3(0, 1, 0),
             new THREE.Vector3(ex, 0, ez).normalize()
           );
-          sDummy.rotateZ(Math.sin(s.ang * 3 + timeSec * 1.1) * 0.25);
-          sDummy.scale.set(1, 1 + windIntensity * 1.0, 1 + windIntensity * 2.2);
+          sDummy.rotateZ(Math.sin(s.ang * 3 + timeSec * 1.1) * (0.12 + windIntensity * 0.3));
+          sDummy.scale.set(1, 1 + windIntensity * 1.0, 1.2 + windIntensity * 1.8);
           sDummy.updateMatrix();
           streakMesh.setMatrixAt(i, sDummy.matrix);
         }
