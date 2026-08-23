@@ -1,9 +1,29 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const SKY_TOP = 0x9fd8ff;
 export const SKY_BOTTOM = 0xffe3f0;
 
-const BUD_RADIUS = 0.45; // world units, visual size of a bud
+// A radially symmetric 5-petal flower lying in the XY plane (faces the camera
+// whichever way it is viewed from). Built once, shared by player/buds/mother.
+function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5 } = {}) {
+  const parts = [];
+  const petalGeo = new THREE.SphereGeometry(petalRadius, 8, 6);
+  petalGeo.scale(1, 1, 0.28); // flatten along z so it reads as a flat flower
+  for (let i = 0; i < petals; i++) {
+    const a = (i / petals) * Math.PI * 2;
+    const g = petalGeo.clone();
+    g.rotateZ(a);
+    g.translate(Math.cos(a) * petalRadius * 1.15, Math.sin(a) * petalRadius * 1.15, 0);
+    parts.push(g);
+  }
+  parts.push(new THREE.SphereGeometry(centerRadius, 10, 8));
+  return mergeGeometries(parts);
+}
+
+const PLAYER_FLOWER = buildFlowerGeometry({ petalRadius: 0.95, centerRadius: 0.4 });
+const BUD_FLOWER = buildFlowerGeometry({ petalRadius: 0.55, centerRadius: 0.24 });
+const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5 });
 
 export function initRender(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -12,7 +32,7 @@ export function initRender(canvas) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(SKY_BOTTOM, 90, 320);
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 10, -14);
+  camera.position.set(0, 10, 40);
 
   // Sky dome: large sphere, BackSide, gradient via vertex colors.
   const skyGeo = new THREE.SphereGeometry(500, 24, 12);
@@ -41,9 +61,7 @@ export function initRender(canvas) {
   ground.position.y = -3;
   scene.add(ground);
 
-  // Petal geometry.
-  const petalGeo = new THREE.SphereGeometry(0.55, 24, 18);
-  petalGeo.scale(0.62, 0.16, 1);
+  // Player flower (the petal).
   const petalMat = new THREE.MeshStandardMaterial({
     color: 0xff9ec0,
     emissive: 0x9a3f66,
@@ -51,7 +69,7 @@ export function initRender(canvas) {
     roughness: 0.4,
   });
   const petal = new THREE.Group();
-  const petalMesh = new THREE.Mesh(petalGeo, petalMat);
+  const petalMesh = new THREE.Mesh(PLAYER_FLOWER, petalMat);
   petal.add(petalMesh);
   scene.add(petal);
 
@@ -60,13 +78,11 @@ export function initRender(canvas) {
   sun.position.set(30, 60, 20);
   scene.add(ambient, sun);
 
-  // --- Buds (instanced) + mother bloom -------------------------------
-  const budGeo = new THREE.SphereGeometry(BUD_RADIUS, 10, 8);
-  const budMat = new THREE.MeshBasicMaterial({ color: 0xffd1dc });
-    let budMesh = null;
+  // --- Buds (instanced flowers) -----------------------------------------
+  let budMesh = null;
   let budData = []; // {x,y,z,colorHex}
   let budTimes = []; // seconds since collected (null = active)
-  const pops = []; // {x,y,z,life} collection bursts
+  const pops = []; // {x,y,z,life,ring} collection bursts
   // Ring pool for collection pops (fixed small pool, no per-collect allocation).
   const ringPool = [];
   for (let i = 0; i < 10; i++) {
@@ -80,9 +96,9 @@ export function initRender(canvas) {
   }
   let ringCursor = 0;
 
-  // Mother bloom: single larger pulsing sphere at trail end.
+  // Mother bloom: larger pulsing flower at the trail's end.
   const motherMat = new THREE.MeshBasicMaterial({ color: 0xff9ecb, transparent: true, opacity: 0.95 });
-  const mother = new THREE.Mesh(new THREE.SphereGeometry(1.4, 20, 14), motherMat);
+  const mother = new THREE.Mesh(MOTHER_FLOWER, motherMat);
   mother.visible = false;
   scene.add(mother);
 
@@ -105,6 +121,12 @@ export function initRender(canvas) {
     camera,
     renderer,
     petal,
+    flowerStats() {
+      return {
+        playerVertices: PLAYER_FLOWER.getAttribute('position').count,
+        budVertices: BUD_FLOWER.getAttribute('position').count,
+      };
+    },
     setTrail(buds, motherPos) {
       scaleBuds(buds);
       if (motherPos) {
@@ -161,8 +183,6 @@ export function initRender(canvas) {
           budMesh.setMatrixAt(i, dummy.matrix);
         }
         budMesh.instanceMatrix.needsUpdate = true;
-        // Tint every bud by its color (instanceColor).
-        if (budMesh.instanceColor) budMesh.instanceColor.needsUpdate = true;
       }
 
       // Pops: expand and fade each pop's own ring.
@@ -182,10 +202,10 @@ export function initRender(canvas) {
       if (mother.visible) {
         const m = 1 + Math.sin(timeSec * 1.8) * 0.08;
         mother.scale.setScalar(m);
-        mother.rotation.y += dt * 0.4;
+        mother.rotation.z += dt * 0.4;
       }
 
-            // Sky dome, ground, and clouds travel with the camera so the world
+      // Sky dome, ground, and clouds travel with the camera so the world
       // visibly scrolls forward as the petal flies down the trail.
       sky.position.copy(camera.position);
       ground.position.set(0, -3, camera.position.z);
@@ -195,10 +215,10 @@ export function initRender(canvas) {
         c.position.z = camera.position.z + c.userData.zo;
       }
 
-      // Camera trails behind and above the petal and always looks ahead.
-      const target = new THREE.Vector3(petalPos.x * 0.6, petalPos.y * 0.55 + 4.2, petalPos.z - 13);
+      // Camera trails behind (larger z) and above the petal, looking ahead (-z).
+      const target = new THREE.Vector3(petalPos.x * 0.6, petalPos.y * 0.55 + 4.2, petalPos.z + 11);
       camera.position.lerp(target, 1 - Math.pow(0.0015, dt));
-      camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z + 30);
+      camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30);
     },
   };
 
@@ -210,7 +230,7 @@ export function initRender(canvas) {
       scene.remove(budMesh);
       budMesh.geometry.dispose();
     }
-    budMesh = new THREE.InstancedMesh(budGeo, budMat, count);
+    budMesh = new THREE.InstancedMesh(BUD_FLOWER, new THREE.MeshBasicMaterial({ color: 0xffffff }), count);
     budMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     const dummy = new THREE.Object3D();
     for (let i = 0; i < count; i++) {
@@ -220,11 +240,11 @@ export function initRender(canvas) {
       budMesh.setMatrixAt(i, dummy.matrix);
     }
     budMesh.instanceMatrix.needsUpdate = true;
-    	// Per-bud tint via instance colors.
-	for (let i = 0; i < count; i++) {
-		budMesh.setColorAt(i, new THREE.Color(buds[i].colorHex));
-	}
-	scene.add(budMesh);
+    // Per-bud tint via instance colors.
+    for (let i = 0; i < count; i++) {
+      budMesh.setColorAt(i, new THREE.Color(buds[i].colorHex));
+    }
+    scene.add(budMesh);
   }
 
   api.setPetalSize(1);

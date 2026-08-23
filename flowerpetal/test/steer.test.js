@@ -9,7 +9,7 @@ test('holding left banks left and turns x negative', () => {
   for (let i = 0; i < 60; i++) s = advance(s, 1 / 60, CFG, true, false);
   assert.ok(s.bank < 0, 'banks left (negative)');
   assert.ok(s.x < 0, 'turns left');
-  assert.ok(s.z > 0, 'always advances forward');
+  assert.ok(s.z < 0, 'always advances forward (toward -z)');
 });
 
 test('holding right banks right and turns x positive', () => {
@@ -17,6 +17,7 @@ test('holding right banks right and turns x positive', () => {
   for (let i = 0; i < 60; i++) s = advance(s, 1 / 60, CFG, false, true);
   assert.ok(s.bank > 0);
   assert.ok(s.x > 0);
+  assert.ok(s.z < 0);
 });
 
 test('releasing both straightens the bank toward zero', () => {
@@ -38,24 +39,24 @@ test('bank is clamped to max', () => {
   assert.ok(s.bank >= -CFG.maxBankRad - 1e-9 && s.bank <= 0);
 });
 
-test('forward speed is constant regardless of bank', () => {
-	const step = (s, l, r) => {
-		const a = advance(s, 1 / 60, CFG, l, r);
-		return Math.hypot(a.x - s.x, a.z - s.z);
-	};
-	let straight = { x: 0, z: 0, bank: 0 };
-	let banked = { x: 0, z: 0, bank: 0 };
-	for (let i = 0; i < 120; i++) {
-		assert.ok(Math.abs(step(straight, false, false) - 6 / 60) < 1e-9, 'straight step = speed*dt');
-		assert.ok(Math.abs(step(banked, true, false) - 6 / 60) < 1e-9, 'banked step = speed*dt');
-		straight = advance(straight, 1 / 60, CFG, false, false);
-		banked = advance(banked, 1 / 60, CFG, true, false);
-	}
-});
-
 test('bank eases toward max, not instantly', () => {
   let s = { x: 0, z: 0, bank: 0 };
   for (let i = 0; i < 10; i++) s = advance(s, 1 / 60, CFG, true, false);
   assert.ok(s.bank > -CFG.maxBankRad, 'bank ramps gradually');
   assert.ok(s.bank < 0);
+});
+
+test('forward speed is constant regardless of bank', () => {
+  const step = (s, l, r) => {
+    const a = advance(s, 1 / 60, CFG, l, r);
+    return Math.hypot(a.x - s.x, a.z - s.z);
+  };
+  let straight = { x: 0, z: 0, bank: 0 };
+  let banked = { x: 0, z: 0, bank: 0 };
+  for (let i = 0; i < 120; i++) {
+    assert.ok(Math.abs(step(straight, false, false) - 6 / 60) < 1e-9, 'straight step = speed*dt');
+    assert.ok(Math.abs(step(banked, true, false) - 6 / 60) < 1e-9, 'banked step = speed*dt');
+    straight = advance(straight, 1 / 60, CFG, false, false);
+    banked = advance(banked, 1 / 60, CFG, true, false);
+  }
 });

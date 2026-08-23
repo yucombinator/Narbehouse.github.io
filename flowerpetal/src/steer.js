@@ -23,7 +23,8 @@ export function advance(state, dt, cfg, left, right) {
     const maxD = levelRate * dt;
     bank += Math.abs(d) <= maxD ? d : Math.sign(d) * maxD;
   }
-  const heading = Math.sin(bank); // lateral fraction of speed
-  const fwd = Math.cos(bank); // forward fraction (still > 0 for sane bank)
-  return { x: state.x + speed * heading * dt, z: state.z + speed * fwd * dt, bank };
+    const heading = Math.sin(bank);            // lateral fraction of speed
+  const fwd = Math.cos(bank);                // forward fraction (still > 0 for sane bank)
+  // Forward is -z in world space, so the petal gains negative z over time.
+  return { x: state.x + speed * heading * dt, z: state.z - speed * fwd * dt, bank };
 }

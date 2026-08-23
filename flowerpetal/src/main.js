@@ -29,6 +29,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 // --- Input: two buttons, LEFT and RIGHT -------------------------------
+let isTitleOpen = true; // Space/Enter start the game while the title is up
 const input = { left: false, right: false };
 
 function bindHold(el, key) {
@@ -54,14 +55,16 @@ function keyIsRight(e) {
   return e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D' || e.key === 'Enter';
 }
 window.addEventListener('keydown', (e) => {
-  if (keyIsLeft(e)) {
-    input.left = true;
-    e.preventDefault();
-  }
-  if (keyIsRight(e)) {
-    input.right = true;
-    e.preventDefault();
-  }
+	// While the title screen is up, Space/Enter belong to Start.
+	if (isTitleOpen && (e.key === ' ' || e.key === 'Enter')) return;
+	if (keyIsLeft(e)) {
+		input.left = true;
+		e.preventDefault();
+	}
+	if (keyIsRight(e)) {
+		input.right = true;
+		e.preventDefault();
+	}
 });
 window.addEventListener('keyup', (e) => {
   if (keyIsLeft(e)) input.left = false;
@@ -276,13 +279,14 @@ document.addEventListener('keydown', (e) => {
 });
 
 function startGame() {
-  if (started) return;
-  started = true;
-  loadProgress();
-  render.setPetalSize(size);
-  render.setPetalTint(tintFor((size - 1) / (MAX_SIZE - 1)));
-  titleEl.style.display = 'none';
-  updateHud();
+	if (started) return;
+	started = true;
+	isTitleOpen = false;
+	loadProgress();
+	render.setPetalSize(size);
+	render.setPetalTint(tintFor((size - 1) / (MAX_SIZE - 1)));
+	titleEl.style.display = 'none';
+	updateHud();
 }
 
 function openConfirm() {

@@ -29,9 +29,9 @@ export function holdableCurvature(v = CRUISE_SPEED) {
 }
 
 export function generateTrail({ seed, length = 400, budSpacing = BUD_SPACING }) {
-  const rand = mulberry32(seed);
-  const zStart = -40;                     // trail begins behind the player
-  const zEnd = zStart + length;
+	const rand = mulberry32(seed);
+	const zStart = 40;                      // trail begins at the player
+	const zEnd = zStart - length;           // and runs toward -z (forward)
   const layers = 2 + Math.floor(rand() * 2); // 2..3 sine layers
 
   // Lateral curve: x(z) = sum a_i sin(f_i z + p_i).
@@ -52,9 +52,9 @@ export function generateTrail({ seed, length = 400, budSpacing = BUD_SPACING }) 
   const curveY = (z) =>
     6 + altAmp1 * Math.sin(altFreqs[0] * z + altPhases[0]) + altAmp2 * Math.sin(altFreqs[1] * z + altPhases[1]);
 
-  const buds = [];
-  let side = 1;
-  for (let z = zStart + budSpacing; z <= zEnd - budSpacing; z += budSpacing) {
+  	const buds = [];
+	let side = 1;
+	for (let z = zStart - budSpacing; z >= zEnd + budSpacing; z -= budSpacing) {
     buds.push({
       x: curveX(z) + side * LATERAL_OFFSET,
       y: curveY(z),

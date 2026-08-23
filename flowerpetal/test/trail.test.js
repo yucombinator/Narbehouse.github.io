@@ -26,15 +26,15 @@ test('same seed -> identical trail; different seed -> different trail', () => {
 });
 
 test('buds are spaced along the trail, sorted by z, with sane count', () => {
-  const t = generateTrail(DEFAULT);
-  assert.ok(t.buds.length >= 40 && t.buds.length <= 70, `count ${t.buds.length}`);
-  for (let i = 1; i < t.buds.length; i++) {
-    assert.ok(t.buds[i].z > t.buds[i - 1].z);
-    const dz = t.buds[i].z - t.buds[i - 1].z;
-    assert.ok(Math.abs(dz - BUD_SPACING) < 1e-6, `even spacing ${dz}`);
-  }
-  assert.equal(t.buds[0].z, t.zStart + BUD_SPACING);
-  assert.equal(t.mother.z, t.zEnd);
+	const t = generateTrail(DEFAULT);
+	assert.ok(t.buds.length >= 40 && t.buds.length <= 70, `count ${t.buds.length}`);
+	for (let i = 1; i < t.buds.length; i++) {
+		assert.ok(t.buds[i].z < t.buds[i - 1].z, 'descending z (toward -z)');
+		const dz = Math.abs(t.buds[i].z - t.buds[i - 1].z);
+		assert.ok(Math.abs(dz - BUD_SPACING) < 1e-6, `even spacing ${dz}`);
+	}
+	assert.equal(t.buds[0].z, t.zStart - BUD_SPACING);
+	assert.equal(t.mother.z, t.zEnd);
 });
 
 test('every bud lies in a bounded corridor around the spline', () => {
