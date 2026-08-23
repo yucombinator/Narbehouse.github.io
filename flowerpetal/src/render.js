@@ -200,6 +200,12 @@ export function initRender(canvas) {
         breathe: 0.6 + Math.random() * 1.0,
         tumble: 1.1 + Math.random() * 1.6,
         born: isNew ? nowSec : -10, // -10 = already fully grown in
+        // A distinct "rest pose" per petal — yaw/pitch/roll offsets so the
+        // swarm shows varied orientations (the model's front face differs
+        // per petal), not every petal pointing the same way.
+        baseYaw: (Math.random() - 0.5) * 2.6,
+        basePitch: (Math.random() - 0.5) * 0.9,
+        baseRoll: (Math.random() - 0.5) * 1.1,
       };
       m.scale.setScalar(isNew ? 0.2 : 1); // new petal starts small
       m.position.set(
@@ -355,11 +361,12 @@ export function initRender(canvas) {
         const pz = u.z0 + Math.sin(timeSec * 1.1 + u.orbit * 2) * u.zdepth * 0.35;
         m.position.set(px * ease, py * ease, pz * ease);
         m.scale.setScalar(0.3 + ease * 0.7);
-        // Orient with the wind: the long axis stays along the flight axis (z),
-        // with only gentle flutter — tiny pitch/yaw/roll, near-still.
-        m.rotation.x = windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
-        m.rotation.y = Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
-        m.rotation.z = Math.sin(timeSec * 0.9 + u.ph0) * 0.1;
+        // Orient with the wind around each petal's OWN rest pose, so petals
+        // hold different angles (some face up, some tilted sideways) and the
+        // wind wobble is only a small modulation on top.
+        m.rotation.x = u.basePitch + windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
+        m.rotation.y = u.baseYaw + Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
+        m.rotation.z = u.baseRoll + Math.sin(timeSec * 0.9 + u.ph0) * 0.1;
       }
 
       // Grass: field centered on the petal in world space; each blade is
