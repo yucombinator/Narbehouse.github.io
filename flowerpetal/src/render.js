@@ -440,9 +440,9 @@ export function initRender(canvas) {
       }
       const wind = windAt(timeSec, 11);
       const windBias = Math.max(-1, Math.min(1, wind.swayVx));
-      // Flight direction: the petal moves toward -z, so the trail streams to
-      // the +z side (behind the player). Each petal keeps its OWN fixed lag
-      // along that axis with a lateral drift, so the ribbon spreads reliably.
+      // First few petals swirl in a circle around the player; the rest trail
+      // behind in a loose spiral stream.
+      const RING_PETALS = 3;
       for (let i = 0; i < petalMeshes.length; i++) {
         const m = petalMeshes[i];
         const u = m.userData;
@@ -452,16 +452,23 @@ export function initRender(canvas) {
           const k = Math.min(1, age / 1.0);
           ease = k * k * (3 - 2 * k);
         }
-        // Petal i sits closer behind the player — a tight swirling clump, not
-        // a single-file line: petals keep their own slow orbit, yaw and bob.
-        const lag = (i + 1) * 1.9;
-        // Meshes live in the ring's LOCAL space, so z is relative (+ = behind,
-        // toward the camera side). A small per-petal orbit + wind swirl keeps
-        // the clump alive instead of a strict line.
-        const orbitAng = u.orbit + timeSec * (0.4 + windIntensity * 0.5);
-        const px = Math.cos(u.orbit + timeSec * 0.6) * (0.5 + i * 0.12) + windBias * 0.9;
-        const py = Math.sin(orbitAng) * 0.28 + Math.cos(u.ph0 * 1.7 + timeSec * 0.6) * 0.35;
-        const pz = lag;
+        // Hybrid: the first RING_PETALS petals swirl in a 3D circle around
+        // the player (wind wreath); the rest trail behind in a loose spiral.
+        let px, py, pz;
+        if (i < RING_PETALS) {
+          const a = u.orbit + timeSec * (0.5 + windIntensity * 0.4);
+          const rad = u.radius0 * (1 + 0.1 * Math.sin(timeSec * u.breathe + u.ph0));
+          px = Math.cos(a) * rad;
+          py = Math.sin(a) * rad * u.flat + 0.18 * Math.sin(timeSec * u.tumble + u.ph0);
+          pz = u.z0 + Math.sin(timeSec * 1.1 + a * 2) * u.zdepth * 0.35;
+        } else {
+          const tIdx = i - RING_PETALS;
+          const lag = 2.4 + tIdx * 2.6;
+          const spiral = 0.5 + tIdx * 0.1;
+          px = Math.cos(u.orbit + timeSec * 0.8) * spiral + windBias * 0.8;
+          py = Math.sin(u.orbit * 1.7 + timeSec * 0.7) * 0.3 + Math.cos(u.ph0 + timeSec * 0.5) * 0.3;
+          pz = lag;
+        }
         m.position.set(
           lerp(m.position.x, px, Math.min(1, dt * 4) * ease),
           lerp(m.position.y, py, Math.min(1, dt * 4) * ease),
