@@ -5,7 +5,7 @@ export const MAX_BANK_DEG = 35;     // max bank angle, two-button steering
 export const G_EFF = 9.8;           // feel constant for the curvature budget
 export const MAX_CURVATURE = 0.09;  // |x''(z)| cap; hard invariant
 export const BUD_SPACING = 7;
-export const LATERAL_OFFSET = 1.2;  // buds sit this far off the spline, alternating sides
+export const LATERAL_OFFSET = 0.35; // buds form a single gentle line on the spline
 export const ALT_AMPLITUDE = 2.5;   // max |y(z) - 6|
 
 export const PALETTE = [
@@ -32,15 +32,14 @@ export function generateTrail({ seed, length = 400, budSpacing = BUD_SPACING }) 
 	const rand = mulberry32(seed);
 	const zStart = 40;                      // trail begins at the player
 	const zEnd = zStart - length;           // and runs toward -z (forward)
-  const layers = 2 + Math.floor(rand() * 2); // 2..3 sine layers
-
-  // Lateral curve: x(z) = sum a_i sin(f_i z + p_i).
-  const freqs = Array.from({ length: layers }, () => 0.010 + rand() * 0.020);
+  // A "line of flowers": keep the trail nearly straight. Very long
+  // wavelengths (period ~1500 units) and small amplitudes mean the whole
+  // meadow reads as one gentle row; curvature stays far below the
+  // holdable budget, so any wander is trivially followable.
+  const layers = 2;
+  const freqs = Array.from({ length: layers }, () => 0.003 + rand() * 0.005);
   const phases = Array.from({ length: layers }, () => rand() * Math.PI * 2);
-  // Amplitudes scaled so worst-case sum(a_i f_i^2) stays under MAX_CURVATURE.
-  const coefSum = freqs.reduce((s, f) => s + f * f, 0);
-  const baseAmp = MAX_CURVATURE / coefSum;
-  const amps = freqs.map(() => baseAmp * (0.55 + rand() * 0.45)); // factor in [0.55, 1.0)
+  const amps = freqs.map((f, i) => (i === 0 ? 3 + rand() * 3 : 2 + rand() * 2));
 
   // Altitude: gentle, independent low-frequency sines (defined before curveY uses them).
   const altFreqs = [0.02 + rand() * 0.02, 0.035 + rand() * 0.02];

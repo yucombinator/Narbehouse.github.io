@@ -21,7 +21,7 @@ function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 
   return mergeGeometries(parts);
 }
 
-const PLAYER_FLOWER = buildFlowerGeometry({ petalRadius: 0.95, centerRadius: 0.4 });
+const PLAYER_FLOWER = buildFlowerGeometry({ petalRadius: 0.42, centerRadius: 0.19 });
 const BUD_FLOWER = buildFlowerGeometry({ petalRadius: 0.55, centerRadius: 0.24 });
 const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5 });
 
@@ -150,10 +150,15 @@ export function initRender(canvas) {
     setPetalSize(s) {
       petal.scale.setScalar(s);
     },
-    setPetalTint(hex) {
+    // Growth glow: raise emissive a touch as size nears the cap.
+    setPetalGlow(progress) {
+      petalMat.emissiveIntensity = 0.35 + progress * 0.6;
+    },
+    // Wear the color of the flower just collected.
+    wearColor(hex) {
       const c = new THREE.Color(hex);
       petalMat.color.copy(c);
-      petalMat.emissive.copy(c).multiplyScalar(0.55);
+      petalMat.emissive.copy(c);
     },
     frame(dt, petalPos, bank, timeSec) {
       petal.position.set(petalPos.x, petalPos.y, petalPos.z);
@@ -248,7 +253,7 @@ export function initRender(canvas) {
   }
 
   api.setPetalSize(1);
-  api.setPetalTint(0xffe3f0);
+  api.wearColor(0xff9ec0);
   return api;
 }
 

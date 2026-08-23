@@ -72,15 +72,21 @@ window.addEventListener('keyup', (e) => {
 });
 
 // Canvas halves steer too.
+function canvasSteer(e, value) {
+  const left = e.clientX < window.innerWidth / 2;
+  if (left) input.left = value;
+  else input.right = value;
+}
 canvas.addEventListener('pointerdown', (e) => {
-  const left = e.clientX < window.innerWidth / 2;
-  if (left) input.left = true;
-  else input.right = true;
+  // Capture so a drag that leaves the canvas still releases cleanly.
+  canvas.setPointerCapture(e.pointerId);
+  canvasSteer(e, true);
 });
-canvas.addEventListener('pointerup', (e) => {
-  const left = e.clientX < window.innerWidth / 2;
-  if (left) input.left = false;
-  else input.right = false;
+canvas.addEventListener('pointerup', (e) => canvasSteer(e, false));
+canvas.addEventListener('pointercancel', (e) => canvasSteer(e, false));
+canvas.addEventListener('pointerleave', () => {
+  input.left = false;
+  input.right = false;
 });
 
 // Steering buttons (created in JS; overlays come in Task 8).
@@ -156,7 +162,9 @@ window.__petalGame = {
     return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed };
   },
   bud(i) {
-    return trail.buds[i] ? { x: trail.buds[i].x, y: trail.buds[i].y, z: trail.buds[i].z } : null;
+    return trail.buds[i]
+      ? { x: trail.buds[i].x, y: trail.buds[i].y, z: trail.buds[i].z, colorHex: trail.buds[i].colorHex }
+      : null;
   },
   mother() {
     return { x: trail.mother.x, y: trail.mother.y, z: trail.mother.z };
@@ -192,6 +200,7 @@ function checkCollection() {
     meadowBuds = st.meadowBuds;
     collectedSet.add(best.i);
     render.collectPop(best.i);
+    render.wearColor(trail.buds[best.i].colorHex); // become the flower you touched
     if (audio) audio.chime(noteFor(totalBuds + collectedSet.size)); // ladder continues across meadows
     if (st.doesBloom) {
       allBloomed = true;
@@ -254,7 +263,7 @@ function loop() {
   checkCollection();
   bloomCheck();
   render.setPetalSize(size);
-  render.setPetalTint(tintFor((size - 1) / (MAX_SIZE - 1)));
+  render.setPetalGlow((size - 1) / (MAX_SIZE - 1));
   render.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank, clock.elapsedTime);
   render.renderer.render(render.scene, render.camera);
   requestAnimationFrame(loop);
@@ -284,7 +293,7 @@ function startGame() {
 	isTitleOpen = false;
 	loadProgress();
 	render.setPetalSize(size);
-	render.setPetalTint(tintFor((size - 1) / (MAX_SIZE - 1)));
+	render.setPetalGlow((size - 1) / (MAX_SIZE - 1));
 	titleEl.style.display = 'none';
 	updateHud();
 }
