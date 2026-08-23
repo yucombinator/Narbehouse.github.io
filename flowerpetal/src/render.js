@@ -634,10 +634,13 @@ export function initRender(canvas) {
       camera.position.lerp(target, 1 - Math.pow(0.0015, dt));
       camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30 - windIntensity * 10);
 
-      // Proximity fade: with the camera fresh, petals that drift close become
-      // partially transparent, graduating smoothly across the band.
-      const FADE_NEAR = 7;
-      const FADE_FAR = 14;
+      // Proximity: petals near the camera fade toward translucent, graduating
+      // smoothly across the band. The default POV puts ring petals ~15 units
+      // from the camera and the trail streams 12–25 out, so the band is wide
+      // (6–20) to actually be visible during play, not just on a head-on
+      // dive into the lens.
+      const FADE_NEAR = 6;
+      const FADE_FAR = 20;
       for (let i = 0; i < petalMeshes.length; i++) {
         const m = petalMeshes[i];
         const u = m.userData;
