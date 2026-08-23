@@ -579,7 +579,10 @@ function openStop() {
   });
   isStopOpen = true;
   stopEl.classList.add('show');
-  focusChoice(0, true); // silent until the player engages
+  focusChoice(0, true);
+  // Greet the chooser: the first flower is read aloud the moment the module
+  // opens, so a single Enter can pick it knowingly — no input required first.
+  speak(flowerById(stopOffer[0]).tts);
 }
 
 function closeStop() {

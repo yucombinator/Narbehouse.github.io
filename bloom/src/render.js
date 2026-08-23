@@ -586,7 +586,9 @@ const PETAL_GEO = buildPlayerPetal();
 export const MAX_PETALS = 8;
 const PETAL_RING_R = 0.3;
 
-const KIND_SCALE = [1.0, 1.05, 0.92, 1.1];
+// Per-kind size tuning — MUST cover every FLOWER_VARIANTS entry (a missing
+// entry yields undefined -> NaN scales -> invisible instances).
+const KIND_SCALE = [1.0, 1.05, 0.95, 1.12, 0.95, 1.05, 1.02, 1.08, 0.9, 0.88];
 
 // Linear interpolation helper (the frame eases petals toward their slot).
 function lerp(a, b, t) {
@@ -594,12 +596,14 @@ function lerp(a, b, t) {
 }
 
 export function initRender(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+  // preserveDrawingBuffer stays off: keeping it forced a full framebuffer
+  // copy-back every frame — one of the heaviest avoidable costs.
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
   renderer.setSize(window.innerWidth, window.innerHeight);
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(SKY_BOTTOM, 75, 380);
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 520);
   camera.position.set(0, 10, 40);
 
   // Sky dome.
@@ -1005,13 +1009,15 @@ export function initRender(canvas) {
   // --- Buds (one InstancedMesh per kind, child of world) ---
   let budMeshes = [];
   let stemMeshes = [];
+  const budDummy = new THREE.Object3D();     // hoisted scratch objects —
+  const stemDummy = new THREE.Object3D();    // never allocated per-frame
   let budData = [];
   let budTimes = [];
   // Bloom-on-pass: every bud starts closed and opens as the petal flies near
   // it, then stays open for the rest of the visit. Fresh meadow = fresh buds.
   let budOpen = []; // 0 = closed, 1 = fully bloomed (latched)
   const BLOOM_NEAR = 9;   // distance at which blooming starts
-  const BLOOM_FAR = 26;   // fully open when closer than this
+  const BLOOM_FAR = 46;   // fully open when closer than this
   let budLocal = [];
   const pops = [];
   const ringPool = [];
@@ -1110,33 +1116,47 @@ export function initRender(canvas) {
     clouds.push(c);
   }
 
-  // Wind streaks: a handful of very thin, faint light lines that stream with
-  // the travel direction. Deliberately sparse and slim — a whisper of air,
-  // not white bars.
-  const STREAK_N = 10;
-  const streakGeo = new THREE.PlaneGeometry(0.09, 0.9, 1, 1); // thin slivers
-  const streakMat = new THREE.MeshBasicMaterial({
-    color: 0xfff6e8,
+  // Breath: a warm whisper of air trailing along the petal's recent path.
+  // Soft round drifts — no hard edges, never more than a hint of opacity —
+  // replacing the old rectangular wind slivers that read as gray confetti.
+  const BREATH_N = 90;
+  const breathGeo = new THREE.BufferGeometry();
+  const bPos = new Float32Array(BREATH_N * 3);
+  const bSize = new Float32Array(BREATH_N);
+  const bAlpha = new Float32Array(BREATH_N);
+  breathGeo.setAttribute('position', new THREE.BufferAttribute(bPos, 3));
+  breathGeo.setAttribute('aSize', new THREE.BufferAttribute(bSize, 1));
+  breathGeo.setAttribute('aAlpha', new THREE.BufferAttribute(bAlpha, 1));
+  const breathMat = new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 0.06,
-    side: THREE.DoubleSide,
     depthWrite: false,
-    depthTest: true,
+    vertexShader: /* glsl */ `
+      attribute float aSize;
+      attribute float aAlpha;
+      varying float vA;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = aSize * (260.0 / max(1.0, -mv.z));
+        gl_Position = projectionMatrix * mv;
+        vA = aAlpha;
+      }`,
+    fragmentShader: /* glsl */ `
+      varying float vA;
+      void main() {
+        float d = length(gl_PointCoord - vec2(0.5));
+        float soft = smoothstep(0.5, 0.06, d); // feathered disc, no rectangle
+        gl_FragColor = vec4(1.0, 0.98, 0.93, soft * vA); // warm breath white
+      }`,
   });
-  const streakMesh = new THREE.InstancedMesh(streakGeo, streakMat, STREAK_N);
-  streakMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  streakMesh.frustumCulled = false;
-  const streakSeeds = [];
-  for (let i = 0; i < STREAK_N; i++) {
-    streakSeeds.push({
-      ang: (i / STREAK_N) * Math.PI * 2 + Math.random() * 0.5,
-      spin: 0.3 + Math.random() * 0.3,
-      r: 1.6 + Math.random() * 1.6,
-      yoff: (Math.random() - 0.5) * 1.6,
-      progress: Math.random(), // 0 (at petal) .. 1 (at camera)
-    });
+  const breathPoints = new THREE.Points(breathGeo, breathMat);
+  breathPoints.frustumCulled = false;
+  scene.add(breathPoints);
+  const breath = [];
+  for (let i = 0; i < BREATH_N; i++) {
+    breath.push({ life: -1, max: 1, x: 0, y: -500, z: 0, vx: 0, vy: 0, vz: 0, s0: 0.4 });
   }
-  scene.add(streakMesh);
+  let breathCursor = 0;
+  let breathAcc = 0;
 
   const api = {
     scene,
@@ -1374,7 +1394,7 @@ export function initRender(canvas) {
 
       // Flowers: planted on the terrain in true world coords (meshes at origin).
       if (budMeshes.length) {
-        const dummy = new THREE.Object3D();
+        const dummy = budDummy;
         for (let i = 0; i < budData.length; i++) {
           const b = budData[i];
           if (!b) continue;
@@ -1392,22 +1412,22 @@ export function initRender(canvas) {
               dummy.position.set(b.x, -500, b.z);
               dummy.scale.setScalar(0.001);
               if (stemMesh) {
-                const sd = new THREE.Object3D();
-                sd.position.set(b.x, ground, b.z);
-                sd.scale.set(1, 0.001, 1);
-                sd.updateMatrix();
-                stemMesh.setMatrixAt(local, sd.matrix);
+                stemDummy.position.set(b.x, ground, b.z);
+                stemDummy.rotation.set(0, 0, 0);
+                stemDummy.scale.set(1, 0.001, 1);
+                stemDummy.updateMatrix();
+                stemMesh.setMatrixAt(local, stemDummy.matrix);
               }
             } else {
               const sc = (1 - kt) * KIND_SCALE[kind];
               dummy.position.set(b.x, crownY, b.z);
               dummy.scale.setScalar(sc);
               if (stemMesh) {
-                const sd = new THREE.Object3D();
-                sd.position.set(b.x, ground, b.z);
-                sd.scale.set(1, STEM_LEN * (1 - kt), 1);
-                sd.updateMatrix();
-                stemMesh.setMatrixAt(local, sd.matrix);
+                stemDummy.position.set(b.x, ground, b.z);
+                stemDummy.rotation.set(0, 0, 0);
+                stemDummy.scale.set(1, STEM_LEN * (1 - kt), 1);
+                stemDummy.updateMatrix();
+                stemMesh.setMatrixAt(local, stemDummy.matrix);
               }
             }
           } else {
@@ -1419,16 +1439,18 @@ export function initRender(canvas) {
               budOpen[i] = Math.min(1, budOpen[i] + Math.max(want, 0) * dt * 1.4);
             }
             const open = budOpen[i];
-            const sc = (0.42 + 0.58 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
-            dummy.position.set(b.x, crownY - (1 - open) * 0.5, b.z);
+            // Closed buds still read as flowers: a generous floor scale and
+            // only a slight sink keep petal shapes visible across the meadow
+            // (they were dots at the old 42% floor).
+            const sc = (0.78 + 0.22 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
+            dummy.position.set(b.x, crownY - (1 - open) * 0.18, b.z);
             dummy.scale.setScalar(sc * KIND_SCALE[kind]);
             if (stemMesh) {
-              const sd = new THREE.Object3D();
-              sd.position.set(b.x, ground, b.z);
-              sd.rotation.z = Math.sin(timeSec * 1.6 + i) * 0.04 * open; // gentle sway
-              sd.scale.set(0.7 + 0.3 * open, STEM_LEN * (0.55 + 0.45 * open), 0.7 + 0.3 * open);
-              sd.updateMatrix();
-              stemMesh.setMatrixAt(local, sd.matrix);
+              stemDummy.position.set(b.x, ground, b.z);
+              stemDummy.rotation.set(0, 0, Math.sin(timeSec * 1.6 + i) * 0.04 * open); // gentle sway
+              stemDummy.scale.set(0.7 + 0.3 * open, STEM_LEN * (0.55 + 0.45 * open), 0.7 + 0.3 * open);
+              stemDummy.updateMatrix();
+              stemMesh.setMatrixAt(local, stemDummy.matrix);
             }
           }
           dummy.updateMatrix();
@@ -1471,45 +1493,45 @@ export function initRender(canvas) {
         c.position.z = camera.position.z + c.userData.zo;
       }
 
-      // Wind streaks: linear flow along the travel direction. When the player
-      // banks (windIntensity up), the air rushes past visibly faster — the
-      // slivers stream along the axis at a speed proportional to the steering,
-      // and they lean/slip back so the motion reads as sustained rush.
-      const flowSpeed = 2.0 + windIntensity * 7; // world units/s along flow
-      if (streakMat) {
-        const dirX = camera.position.x - petalPos.x;
-        const dirZ = camera.position.z - petalPos.z;
-        const dirLen = Math.hypot(dirX, dirZ) || 1;
-        const ex = dirX / dirLen;
-        const ez = dirZ / dirLen;
-        const sDummy = new THREE.Object3D();
-        for (let i = 0; i < STREAK_N; i++) {
-          const s = streakSeeds[i];
-          // Each sliver has a flow progress along the petal->camera axis;
-          // advance it with the wind speed and wrap it back to the petal.
-          s.progress += (flowSpeed * dt) / (s.r * 1.2 + 1.5);
-          if (s.progress > 1) {
-            s.progress = 0;
-            s.ang = Math.random() * Math.PI * 2;
-          }
-          const latX = Math.cos(s.ang + timeSec * s.spin) * (0.7 + s.r * 0.3);
-          const latY = Math.sin(s.ang * 1.7 + timeSec * s.spin * 0.8) * 0.5 + s.yoff;
-          const pxw = petalPos.x + ex * s.progress * dirLen * 0.8 + latX;
-          const pzw = petalPos.z + ez * s.progress * dirLen * 0.8 + Math.sin(s.ang * 2 + timeSec * 0.7) * 0.4;
-          sDummy.position.set(pxw, petalPos.y + latY, pzw);
-          // Long axis along the flow; faster flow streaks lean more.
-          sDummy.quaternion.setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            new THREE.Vector3(ex, 0, ez).normalize()
-          );
-          sDummy.rotateZ(Math.sin(s.ang * 3 + timeSec * 1.1) * (0.12 + windIntensity * 0.3));
-          sDummy.scale.set(1, 1 + windIntensity * 1.0, 1.2 + windIntensity * 1.8);
-          sDummy.updateMatrix();
-          streakMesh.setMatrixAt(i, sDummy.matrix);
-        }
-        streakMesh.instanceMatrix.needsUpdate = true;
-        streakMat.opacity = 0.05 + windIntensity * 0.35;
+      // Breath trail: emit soft drifts along the petal's recent path. The
+      // breath deepens as the basket fills — a fuller day breathes harder.
+      // Each puff rises lazily, leans with the wind, and fades in/out on a
+      // sine envelope that peaks around a gentle 0.13 alpha.
+      breathAcc += dt * (5 + petalMeshes.length * 0.8);
+      while (breathAcc >= 1) {
+        breathAcc -= 1;
+        const p = breath[breathCursor];
+        breathCursor = (breathCursor + 1) % BREATH_N;
+        const t = trailHistory[Math.min(trailHistory.length - 1, Math.floor(Math.random() * 3))]
+          || { x: petalPos.x, y: petalPos.y, z: petalPos.z };
+        p.life = 0;
+        p.max = 2.6 + Math.random() * 1.2;
+        p.x = t.x + (Math.random() - 0.5) * 0.7;
+        p.y = t.y + (Math.random() - 0.5) * 0.5 + 0.15;
+        p.z = t.z + (Math.random() - 0.5) * 0.7;
+        p.vx = windBias * 0.45 + (Math.random() - 0.5) * 0.14;
+        p.vy = 0.16 + Math.random() * 0.12;
+        p.vz = (Math.random() - 0.5) * 0.1;
+        p.s0 = 0.32 + Math.random() * 0.22;
       }
+      for (let i = 0; i < BREATH_N; i++) {
+        const p = breath[i];
+        if (p.life < 0) { bAlpha[i] = 0; continue; }
+        p.life += dt;
+        if (p.life >= p.max) { p.life = -1; bAlpha[i] = 0; continue; }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        const k = p.life / p.max;
+        bAlpha[i] = Math.sin(k * Math.PI) * 0.13;
+        bSize[i] = p.s0 * (1 + k * 1.6); // swells as it dissolves
+        bPos[i * 3] = p.x;
+        bPos[i * 3 + 1] = p.y;
+        bPos[i * 3 + 2] = p.z;
+      }
+      breathGeo.attributes.position.needsUpdate = true;
+      breathGeo.attributes.aSize.needsUpdate = true;
+      breathGeo.attributes.aAlpha.needsUpdate = true;
 
       // Camera trails behind (larger z) and above the petal, looking ahead.
       // While steering (windIntensity up), pull the camera back so the POV
