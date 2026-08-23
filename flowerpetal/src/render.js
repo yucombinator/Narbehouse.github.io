@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_KINDS } from './trail.js';
 import { HILLS } from './hill.js';
+import { windAt } from './wind.js';
 
 export const SKY_TOP = 0x9fd8ff;
 export const SKY_BOTTOM = 0xffe3f0;
@@ -146,11 +147,24 @@ export function initRender(canvas) {
         roughness: 0.4,
       });
       const m = new THREE.Mesh(PETAL_GEO, mat);
-      const angle = (i / count) * Math.PI * 2;
-      const r = PETAL_RING_R * (0.85 + Math.random() * 0.35);
-      m.position.set(Math.cos(angle) * r, Math.sin(angle) * r, 0);
-      m.rotation.z = angle + (Math.random() - 0.5) * 0.35;
-      m.rotation.x = (Math.random() - 0.5) * 0.4; // loose wobble, not a flower
+      // Each petal tumbles on its own: distinct orbit radius, speed, phase,
+      // breathing and tumble rates, so the swarm churns instead of rotating
+      // as a rigid circle.
+      m.userData = {
+        orbit: Math.random() * Math.PI * 2,
+        dir: Math.random() < 0.5 ? -1 : 1,
+        speed: 0.4 + Math.random() * 0.9,
+        radius0: PETAL_RING_R * (0.85 + Math.random() * 0.75),
+        flat: 0.7 + Math.random() * 0.6,
+        ph0: Math.random() * Math.PI * 2,
+        breathe: 0.6 + Math.random() * 1.0,
+        tumble: 1.1 + Math.random() * 1.6,
+      };
+      m.position.set(
+        Math.cos(m.userData.ph0) * m.userData.radius0,
+        Math.sin(m.userData.ph0) * m.userData.radius0,
+        0
+      );
       petalRing.add(m);
       petalMeshes.push(m);
       petalMats.push(mat);
@@ -266,7 +280,26 @@ export function initRender(canvas) {
       petal.position.set(petalPos.x, petalPos.y, petalPos.z);
       petal.rotation.z = bank * 0.6;
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
-      petalRing.rotation.z = timeSec * 0.5;
+      // Wind-swirl: each petal churns around its own orbit — speed and
+      // direction vary per petal, offset by the live wind (swayVx), so the
+      // wreath tumbles with the breeze instead of circling rigidly.
+      const wind = windAt(timeSec, 11);
+      const windBias = Math.max(-1, Math.min(1, wind.swayVx));
+      for (let i = 0; i < petalMeshes.length; i++) {
+        const m = petalMeshes[i];
+        const u = m.userData;
+        // Orbit advances; wind speeds it up and drifts the phase downstream.
+        u.orbit += dt * u.dir * u.speed * (0.6 + Math.abs(windBias)) + windBias * dt * 1.3;
+        const rad = u.radius0 * (1 + 0.28 * Math.sin(timeSec * u.breathe + u.ph0));
+        // Elliptical sway, not a true circle.
+        const px = Math.cos(u.orbit) * rad;
+        const py = Math.sin(u.orbit) * rad * u.flat + 0.18 * Math.sin(timeSec * u.tumble + u.ph0);
+        m.position.set(px, py, 0);
+        // Tumble: spin around the petal's long axis and wobble face-on.
+        m.rotation.z = Math.sin(u.orbit + u.ph0) * 0.5 + Math.sin(timeSec * u.tumble + u.ph0) * 0.28;
+        m.rotation.x = windBias * 0.7 + Math.sin(timeSec * 1.9 + u.ph0) * 0.22;
+        m.rotation.y = Math.sin(timeSec * 0.9 + u.ph0 * 2) * 0.25;
+      }
 
       // Grass: field centered on the petal in world space; each blade is
       // planted at HILLS(world) and bends with wind + proximity.
