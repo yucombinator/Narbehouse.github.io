@@ -3,104 +3,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_KINDS } from './trail.js';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=2';
+import { createGrass } from './grass.js?v=5';
 
-export const SKY_TOP = 0x9fd8ff;
-export const SKY_BOTTOM = 0xffe3f0;
-
-// Shared lighting — the same sun model the grass uses, applied to petals,
-// flower crowns, and stems: warm directional key + subsurface backlight +
-// sky fill + distance fog. Gives every surface the soft, sunlit look of the
-// meadow.
-const SHADED_UNIFORMS = () => ({
-  uSunDir: { value: new THREE.Vector3(40, 70, 25).normalize() },
-  uTint: { value: new THREE.Color(1, 1, 1) },
-  skyAmount: { value: 0.35 },
-  fogColor: { value: new THREE.Color(SKY_BOTTOM) },
-  fogNear: { value: 90 },
-  fogFar: { value: 320 },
-});
-
-const SHADED_VERT = `
-  varying vec3 vNormalW;
-  varying vec3 vPosW;
-  varying vec3 vVertColor;
-  #ifdef HAS_ICOLOR
-    attribute vec3 iColor;
-  #endif
-  void main() {
-    vec4 wp = modelMatrix * vec4(position, 1.0);
-    vPosW = wp.xyz;
-    vNormalW = normalize(mat3(modelMatrix) * normal);
-    #ifdef USE_COLOR
-      vVertColor = color;
-    #else
-      #ifdef HAS_ICOLOR
-        vVertColor = iColor;
-      #else
-        vVertColor = vec3(1.0);
-      #endif
-    #endif
-    gl_Position = projectionMatrix * viewMatrix * wp;
-  }
-`;
-
-const SHADED_FRAG = `
-  uniform vec3 uSunDir;
-  uniform vec3 uTint;
-  uniform float skyAmount;
-  uniform vec3 fogColor;
-  uniform float fogNear;
-  uniform float fogFar;
-  varying vec3 vNormalW;
-  varying vec3 vPosW;
-  varying vec3 vVertColor;
-
-  void main() {
-    vec3 n = normalize(vNormalW);
-    vec3 sunDir = normalize(uSunDir);
-    float nDotL = max(0.0, dot(n, sunDir));
-    vec3 sunLight = vec3(1.0, 0.94, 0.76) * (nDotL * 0.85);
-    // Subsurface backlight (warm glow through thin petals, like the grass).
-    float sss = pow(max(0.0, dot(-n, sunDir)), 2.0) * 0.55;
-    sunLight += vec3(1.0, 0.92, 0.72) * sss;
-    // Cool sky fill, stronger on upward faces.
-    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (skyAmount + 0.35 * max(0.0, n.y));
-    vec3 col = vVertColor * uTint * (skyLight + sunLight);
-    // Distance fog (matches scene fog).
-    float depth = gl_FragCoord.z / gl_FragCoord.w;
-    float fogFactor = clamp((depth - fogNear) / (fogFar - fogNear), 0.0, 1.0);
-    col = mix(col, fogColor, pow(fogFactor, 1.2));
-    gl_FragColor = vec4(col, 1.0);
-  }
-`;
-
-function makeShadedMaterial(color, vertexColors = false) {
-  const mat = new THREE.ShaderMaterial({
-    uniforms: SHADED_UNIFORMS(),
-    vertexShader: SHADED_VERT,
-    fragmentShader: SHADED_FRAG,
-    vertexColors: !!vertexColors,
-    side: THREE.DoubleSide,
-  });
-  mat.uniforms.uTint.value.setHex(color);
-  return mat;
-}
-
-function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5, spread = 1.0 } = {}) {
-  const parts = [];
-  const petalGeo = new THREE.SphereGeometry(petalRadius, 8, 6);
-  petalGeo.scale(1, 1, 0.28);
-  for (let i = 0; i < petals; i++) {
-    const a = (i / petals) * Math.PI * 2;
-    const g = petalGeo.clone();
-    g.rotateZ(a);
-    g.translate(Math.cos(a) * petalRadius * 1.15 * spread, Math.sin(a) * petalRadius * 1.15 * spread, 0);
-    parts.push(g);
-  }
-  parts.push(new THREE.SphereGeometry(centerRadius, 10, 8));
-  return mergeGeometries(parts);
-}
+export const SKY_TOP = 0x529ef0;
+export const SKY_BOTTOM = 0xc8e6ff;
 
 // --- Botanical Shading for Flowers, Stems, and Petals (Matching Grass SSS + Sun + Sky + Fog) ---
 const FLOWER_VERTEX_SHADER = `
@@ -398,7 +304,7 @@ function teardropPetal(len, wide, thin = 0.3) {
   return g;
 }
 
-function buildFlowerGeometryRealistic({ petalRadius = 0.5, centerRadius = 0.26, petals = 5, spread = 1.0 } = {}) {
+function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5, spread = 1.0 } = {}) {
   const parts = [];
   // Two overlapping petal layers, each rotated by half a petal, so the bloom
   // looks like real layered petals rather than a ball with bumps.
@@ -410,11 +316,12 @@ function buildFlowerGeometryRealistic({ petalRadius = 0.5, centerRadius = 0.26, 
       g.translate(
         Math.cos(a) * petalRadius * 1.05 * spread,
         Math.sin(a) * petalRadius * 1.05 * spread,
-        layer === 0 ? 0 : -0.12
+        (layer === 0 ? 0 : -0.12) // back layer slightly higher
       );
       parts.push(g);
     }
   }
+  // Fuzzy center: a small, denser sphere with a crown bump.
   const heart = new THREE.SphereGeometry(centerRadius, 12, 9);
   heart.scale(1, 1, 0.9);
   const hpos = heart.attributes.position;
@@ -437,8 +344,6 @@ const KIND_GEOMETRIES = FLOWER_KINDS.map((k) =>
 );
 const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5, petals: 8, spread: 1.25 });
 
-<<<<<<< HEAD
-=======
 // A slender stem for the collectible flowers: tapered green cylinder rising
 // from the ground to the flower crown. Bases at y=0 (lives in world space).
 const STEM_GEO = new THREE.CylinderGeometry(0.03, 0.05, 1, 6);
@@ -460,7 +365,6 @@ STEM_GEO.translate(0, 0.5, 0);
 const STEM_LEN = 3.2;
 const CROWN_LIFT = STEM_LEN + 0.35; // crown height above the terrain (stands above grass)
 
->>>>>>> d6a32f1
 // Player petal: an elongated, tapered blade along Z (flight direction) — a
 // wider rounded tip and narrower base, like a real flower petal rather than
 // a plain pill.
@@ -470,7 +374,8 @@ PETAL_GEO.scale(0.3, 0.62, 1.6);
   const pos = PETAL_GEO.attributes.position;
   const pcol = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
-    const z = pos.getZ(i) / 1.6;
+    const z = pos.getZ(i) / 1.6; // -1..1 along the blade
+    // taper width toward the base (z = -1) and round the tip (z = +1)
     const taper = 0.45 + 0.55 * Math.pow(0.5 + z * 0.5, 0.7);
     pos.setX(i, pos.getX(i) * taper);
     pos.setY(i, pos.getY(i) * (0.75 + 0.25 * Math.sin(Math.PI * Math.min(1, Math.max(0, (z + 1) / 2)))));
@@ -486,13 +391,6 @@ PETAL_GEO.scale(0.3, 0.62, 1.6);
 export const MAX_PETALS = 8;
 const PETAL_RING_R = 0.3;
 
-// A slender stem for the collectible flowers: tapered green cylinder rising
-// from the ground to the flower crown. Bases at y=0 (lives in world space).
-const STEM_GEO = new THREE.CylinderGeometry(0.03, 0.05, 1, 6);
-STEM_GEO.translate(0, 0.5, 0);
-const STEM_LEN = 2.2;
-const CROWN_LIFT = STEM_LEN + 0.25;
-
 const KIND_SCALE = [1.0, 1.05, 0.92, 1.1];
 
 // Linear interpolation helper (the frame eases petals toward their slot).
@@ -502,10 +400,10 @@ function lerp(a, b, t) {
 
 export function initRender(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
   renderer.setSize(window.innerWidth, window.innerHeight);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY_BOTTOM, 90, 320);
+  scene.fog = new THREE.Fog(SKY_BOTTOM, 75, 380);
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 10, 40);
 
@@ -523,41 +421,28 @@ export function initRender(canvas) {
   const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
   scene.add(sky);
 
-  // Big enough to cover the whole flight path with grass always on it. The
-  // fog hides the far edge; the terrain stays world-fixed so flowers, grass
-  // and the petal's floor-clamp all sample the same HILLS at the same origin.
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(6000, 6000, 160, 160),
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true })
-  );
-  {
-    const gpos = ground.geometry.attributes.position;
-    const hillColors = [];
-    const cHigh = new THREE.Color(0x7ec850);
-    const cLow = new THREE.Color(0x9ee06a);
-    for (let i = 0; i < gpos.count; i++) {
-      const wx = gpos.getX(i);
-      const wz = gpos.getY(i);
-      const h = HILLS.height(wx, wz);
-      gpos.setZ(i, h);
-      const t = THREE.MathUtils.clamp((h + 5) / 10, 0, 1);
-      const c = cLow.clone().lerp(cHigh, t);
-      hillColors.push(c.r, c.g, c.b);
-    }
-    ground.geometry.setAttribute('color', new THREE.Float32BufferAttribute(hillColors, 3));
-    ground.geometry.computeVertexNormals();
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(0, 0, 0);
-    ground.receiveShadow = true;
-    scene.add(ground);
-  }
+  // --- Infinite Dynamic GPU Terrain: A continuous rolling landscape generated
+  // dynamically on the GPU. Centered on the camera and snapped to the grid so
+  // it extends infinitely in all directions with zero seams or disappearing edges.
+  const hp = HILLS.params;
+  const terrainGeo = new THREE.PlaneGeometry(900, 900, 160, 160);
+  terrainGeo.rotateX(-Math.PI / 2);
 
-  // The rich grass field (custom shader) — created after the scene exists.
-  const grass = createGrass({ scene, hillsParams: HILLS.params, skyBottom: SKY_BOTTOM });
+  const terrainMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uCameraPos: { value: new THREE.Vector3() },
+      uSunDir: { value: new THREE.Vector3(40, 70, 25).normalize() },
+      uHillsParams1: { value: new THREE.Vector4(hp.a1, hp.f1x, hp.p1x, hp.f1z) },
+      uHillsParams2: { value: new THREE.Vector4(hp.p1z, hp.b1, hp.f2x, hp.p2x) },
+      uHillsParams3: { value: new THREE.Vector4(hp.f2z, hp.p2z, hp.offset, 0) },
+      fogColor: { value: new THREE.Color(SKY_BOTTOM) },
+      fogNear: { value: 75 },
+      fogFar: { value: 380 },
+    },
+    vertexShader: `
+      precision highp float;
 
-<<<<<<< HEAD
-  // --- Player ring ---
-=======
       uniform vec3 uCameraPos;
       uniform vec4 uHillsParams1;
       uniform vec4 uHillsParams2;
@@ -793,7 +678,6 @@ export function initRender(canvas) {
 
   // --- Player: a swirling wreath of petals ("I am the wind, not the flower").
   // No center bloom, no heart — just loose petals circling a point.
->>>>>>> d6a32f1
   const petal = new THREE.Group();
   const petalRing = new THREE.Group();
   petal.add(petalRing);
@@ -802,20 +686,17 @@ export function initRender(canvas) {
   const petalMats = [];
   const petalMeshes = [];
   let petalColors = [0xff9ec0];
-  let nowSec = 0;
-  let petalGeometry = PETAL_GEO;
-  let windIntensity = 0;
-  const trailHistory = [];
+  let nowSec = 0; // game clock, cached from frame() for eases
+  let petalGeometry = PETAL_GEO; // upgraded to the CC-BY model when loaded
+  let windIntensity = 0; // 0 = calm, 1 = full wind rush (ramps with steering)
+  const trailHistory = []; // {x,y,z} recent flight positions for the petal trail
 
   // Add ONE new petal (ease-in) without disturbing the existing swarm.
+  // Existing petals keep their orbits/poses; only the next one appears small
+  // at the centre and grows into place — no full-swarm reset on pickup.
   function spawnPetalMesh() {
-<<<<<<< HEAD
-    const color = petalColors[petalColors.length - 1] ?? 0xff9ec1;
-    const mat = makeShadedMaterial(color, true);
-=======
     const color = petalColors[petalColors.length - 1] ?? 0xff9ec0;
     const mat = createPetalMaterial(color);
->>>>>>> d6a32f1
     const m = new THREE.Mesh(petalGeometry, mat);
     m.userData = {
       orbit: Math.random() * Math.PI * 2,
@@ -828,12 +709,12 @@ export function initRender(canvas) {
       ph0: Math.random() * Math.PI * 2,
       breathe: 0.6 + Math.random() * 1.0,
       tumble: 1.1 + Math.random() * 1.6,
-      born: nowSec,
+      born: nowSec, // eases in from the swarm centre
       baseYaw: (Math.random() - 0.5) * 2.6,
       basePitch: (Math.random() - 0.5) * 0.9,
       baseRoll: (Math.random() - 0.5) * 1.1,
     };
-    m.scale.setScalar(0.2);
+    m.scale.setScalar(0.2); // start small at the centre
     m.position.set(0, 0, 0);
     petalRing.add(m);
     petalMeshes.push(m);
@@ -850,40 +731,49 @@ export function initRender(canvas) {
     petalMats.length = 0;
     const count = Math.max(1, Math.min(MAX_PETALS, petalColors.length));
     for (let i = 0; i < count; i++) {
-<<<<<<< HEAD
-      const mat = makeShadedMaterial(petalColors[i] ?? petalColors[petalColors.length - 1], true);
-=======
       const color = petalColors[i] ?? petalColors[petalColors.length - 1];
       const mat = createPetalMaterial(color);
->>>>>>> d6a32f1
       const m = new THREE.Mesh(petalGeometry, mat);
-      const isNew = i === count - 1 && count > 1;
+      // Each petal tumbles on its own: distinct orbit radius, speed, phase,
+      // breathing and tumble rates, so the swarm churns instead of rotating
+      // as a rigid circle.
+      // Petals are scattered through a loose 3D ball — distinct x/y/z origins
+      // (z depth included) so they swirl as a swarm without stacking flat.
+      const isNew = i === count - 1 && count > 1; // newest petal eases in
       m.userData = {
         orbit: Math.random() * Math.PI * 2,
         dir: Math.random() < 0.5 ? -1 : 1,
         speed: 0.4 + Math.random() * 0.9,
-        radius0: 0.28 + Math.random() * 0.85,
-        flat: 0.45 + Math.random() * 0.85,
-        z0: (Math.random() - 0.5) * 1.15,
+        radius0: 0.28 + Math.random() * 0.85,      // wider radial spread
+        flat: 0.45 + Math.random() * 0.85,        // flatter/slanted orbit plane
+        z0: (Math.random() - 0.5) * 1.15,          // distinct depth per petal
         zdepth: 0.35 + Math.random() * 0.55,
         ph0: Math.random() * Math.PI * 2,
         breathe: 0.6 + Math.random() * 1.0,
         tumble: 1.1 + Math.random() * 1.6,
-        born: isNew ? nowSec : -10,
+        born: isNew ? nowSec : -10, // -10 = already fully grown in
+        // A distinct "rest pose" per petal — yaw/pitch/roll offsets so the
+        // swarm shows varied orientations (the model's front face differs
+        // per petal), not every petal pointing the same way.
         baseYaw: (Math.random() - 0.5) * 2.6,
         basePitch: (Math.random() - 0.5) * 0.9,
         baseRoll: (Math.random() - 0.5) * 1.1,
       };
-      m.scale.setScalar(isNew ? 0.2 : 1);
-      m.position.set(0, 0, 0);
+      m.scale.setScalar(isNew ? 0.2 : 1); // new petal starts small
+      m.position.set(
+        isNew ? 0 : Math.cos(m.userData.ph0) * m.userData.radius0,
+        isNew ? 0 : Math.sin(m.userData.ph0) * m.userData.radius0 * m.userData.flat + (Math.random() - 0.5) * 0.4,
+        isNew ? 0 : m.userData.z0
+      );
       petalRing.add(m);
       petalMeshes.push(m);
       petalMats.push(mat);
     }
   }
 
-  // Global lights: still drive the standard-material ground/sky with the same
-  // sun; the shaded petals/flowers read their own uniforms.
+  // Global shading: warm key sun from one side, cold sky fill above, and a
+  // soft rim light from the opposite side so every surface — hills, flowers
+  // and especially the tumbling petals — reads with form and a lit rim.
   const ambient = new THREE.HemisphereLight(0xcfe8ff, 0x7a9e4a, 0.95);
   const sun = new THREE.DirectionalLight(0xfff2d8, 1.4);
   sun.position.set(40, 70, 25);
@@ -898,18 +788,17 @@ export function initRender(canvas) {
   const rim = new THREE.DirectionalLight(0xbfe4ff, 0.55);
   rim.position.set(-45, 20, -30);
   scene.add(ambient, sun, rim);
-  ground.receiveShadow = true;
+  ground.receiveShadow = true; // hills catch shade from flowers/petals
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   petal.traverse((o) => { if (o.isMesh) o.castShadow = true; });
 
-  // --- Buds (one InstancedMesh per kind, world-space) ---
+  // --- Buds (one InstancedMesh per kind, child of world) ---
   let budMeshes = [];
   let stemMeshes = [];
   let budData = [];
   let budTimes = [];
   let budLocal = [];
-  let budRowYRamp = [];
   const pops = [];
   const ringPool = [];
   for (let i = 0; i < 10; i++) {
@@ -923,10 +812,6 @@ export function initRender(canvas) {
   }
   let ringCursor = 0;
 
-<<<<<<< HEAD
-  const motherMat = makeShadedMaterial(0xff9ecb, false);
-=======
->>>>>>> d6a32f1
   const mother = new THREE.Mesh(MOTHER_FLOWER, motherMat);
   mother.visible = false;
   mother.userData.wx = 0;
@@ -947,9 +832,11 @@ export function initRender(canvas) {
     clouds.push(c);
   }
 
-  // Wind streaks: a handful of very thin, faint light lines.
+  // Wind streaks: a handful of very thin, faint light lines that stream with
+  // the travel direction. Deliberately sparse and slim — a whisper of air,
+  // not white bars.
   const STREAK_N = 10;
-  const streakGeo = new THREE.PlaneGeometry(0.09, 0.9, 1, 1);
+  const streakGeo = new THREE.PlaneGeometry(0.09, 0.9, 1, 1); // thin slivers
   const streakMat = new THREE.MeshBasicMaterial({
     color: 0xfff6e8,
     transparent: true,
@@ -968,7 +855,7 @@ export function initRender(canvas) {
       spin: 0.3 + Math.random() * 0.3,
       r: 1.6 + Math.random() * 1.6,
       yoff: (Math.random() - 0.5) * 1.6,
-      progress: Math.random(),
+      progress: Math.random(), // 0 (at petal) .. 1 (at camera)
     });
   }
   scene.add(streakMesh);
@@ -1007,6 +894,7 @@ export function initRender(canvas) {
     },
     addPetal(hex) {
       if (petalColors.length >= MAX_PETALS) {
+        // At the cap: drop the oldest petal, keep the rest, add the newest.
         const oldest = petalMeshes.shift();
         petalRing.remove(oldest);
         oldest.material.dispose();
@@ -1014,7 +902,7 @@ export function initRender(canvas) {
         petalColors.shift();
       }
       petalColors.push(hex);
-      spawnPetalMesh();
+      spawnPetalMesh(); // only the new petal animates — the swarm stays put
     },
     setPetalCount(n) {
       const cur = petalColors[petalColors.length - 1] ?? 0xff9ec6;
@@ -1022,17 +910,11 @@ export function initRender(canvas) {
       rebuildPetals();
     },
     setPetalGlow(progress) {
-<<<<<<< HEAD
-      for (const mat of petalMats) {
-        if (mat.uniforms && mat.uniforms.skyAmount) {
-          mat.uniforms.skyAmount.value = 0.35 + progress * 0.6;
-        }
-      }
-=======
       currentGlow = progress;
       for (const mat of petalMats) mat.uniforms.uGlow.value = currentGlow;
->>>>>>> d6a32f1
     },
+    // Swap in the loaded 3D petal (CC-BY cherry blossom). Applied to every
+    // petal on the next rebuild; the procedural one is used until then.
     setPetalGeometry(geo) {
       if (!geo.getAttribute('color')) {
         const count = geo.getAttribute('position').count;
@@ -1042,24 +924,21 @@ export function initRender(canvas) {
       petalGeometry = geo;
       for (const m of petalMeshes) m.geometry = geo;
     },
+    // Reset the trail slots (called on teleport / new meadow / start so the
+    // ribbon never stretches through stale world positions).
     resetTrail() {
       trailHistory.length = 0;
     },
     frame(dt, petalPos, bank, timeSec, steerLevel = 0) {
-      nowSec = timeSec;
+      nowSec = timeSec; // keep the acquisition clock current
       petal.position.set(petalPos.x, petalPos.y, petalPos.z);
       petal.rotation.z = bank * 0.6;
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
-<<<<<<< HEAD
-      windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 1.1));
-      // Trail history (unused by current petal layout but kept for API compat).
-=======
       // Wind intensity eases toward the steering input.
       windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 1.1));
       // Trail: record the recent path, spaced ~2.5 units apart so slots
       // stretch a real distance behind the player (not every frame collapsed
       // at one point).
->>>>>>> d6a32f1
       {
         const last = trailHistory[0];
         if (!last || Math.hypot(last.x - petalPos.x, last.z - petalPos.z) > 3.2) {
@@ -1069,6 +948,8 @@ export function initRender(canvas) {
       }
       const wind = windAt(timeSec, 11);
       const windBias = Math.max(-1, Math.min(1, wind.swayVx));
+      // First few petals swirl in a circle around the player; the rest trail
+      // behind in a loose spiral stream.
       const RING_PETALS = 3;
       for (let i = 0; i < petalMeshes.length; i++) {
         const m = petalMeshes[i];
@@ -1076,8 +957,11 @@ export function initRender(canvas) {
         let ease = 1;
         if (u.born >= 0) {
           const age = timeSec - u.born;
-          ease = Math.max(0, Math.min(1, age / 1.0));
+          const k = Math.min(1, age / 1.0);
+          ease = k * k * (3 - 2 * k);
         }
+        // Hybrid: the first RING_PETALS petals swirl in a 3D circle around
+        // the player (wind wreath); the rest trail behind in a loose spiral.
         let px, py, pz;
         if (i < RING_PETALS) {
           const a = u.orbit + timeSec * (0.5 + windIntensity * 0.4);
@@ -1087,41 +971,30 @@ export function initRender(canvas) {
           pz = u.z0 + Math.sin(timeSec * 1.1 + a * 2) * u.zdepth * 0.35;
         } else {
           const tIdx = i - RING_PETALS;
-          const lg = 2.4 + tIdx * 2.6;
+          const lag = 2.4 + tIdx * 2.6;
           const spiral = 0.5 + tIdx * 0.1;
           px = Math.cos(u.orbit + timeSec * 0.8) * spiral + windBias * 0.8;
           py = Math.sin(u.orbit * 1.7 + timeSec * 0.7) * 0.3 + Math.cos(u.ph0 + timeSec * 0.5) * 0.3;
-          pz = lg;
+          pz = lag;
         }
-        const sx = lerp(m.position.x, px, Math.min(1, dt * 4) * ease);
-        const sy = lerp(m.position.y, py, Math.min(1, dt * 4) * ease);
-        const sz = lerp(m.position.z, pz, Math.min(1, dt * 4) * ease);
-        const finalY = Math.max(HILLS.height(petalPos.x + sx, petalPos.z + sz) + 0.45, sy);
-        m.position.set(sx, finalY, sz);
+        const targetY = lerp(m.position.y, py, Math.min(1, dt * 4) * ease);
+        // Never clip the ground: petals hold at least half a petal above the
+        // terrain under them (world position = petal grouping + local offset).
+        const worldX = petalPos.x + lerp(m.position.x, px, Math.min(1, dt * 4) * ease);
+        const worldZ = petalPos.z + lerp(m.position.z, pz, Math.min(1, dt * 4) * ease);
+        const floorY = HILLS.height(worldX, worldZ) + 0.45;
+        const finalY = Math.max(floorY, targetY);
+        const pwx = lerp(m.position.x, px, Math.min(1, dt * 4) * ease);
+        const pwz = lerp(m.position.z, pz, Math.min(1, dt * 4) * ease);
+        m.position.set(pwx, finalY, pwz);
         m.scale.setScalar((0.5 + ease * 0.5) * (1 + windIntensity * 0.18));
         m.rotation.x = u.basePitch + windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
         m.rotation.y = u.baseYaw + Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
         m.rotation.z = u.baseRoll + Math.sin(timeSec * 0.9 + u.ph0) * 0.1;
-        u.worldX = petalPos.x + sx;
+        // Store the petal's world position for the depth fade (computed after
+        // the camera moves this frame, at the bottom of frame()).
+        u.worldX = petalPos.x + pwx;
         u.worldY = finalY;
-<<<<<<< HEAD
-        u.worldZ = petalPos.z + sz;
-        m.material.transparent = true;
-      }
-
-      // Petals (flowers that were collected) removed from trail — the
-      // per-petal fade remains for the near-camera band.
-      const FADE_NEAR = 7;
-      const FADE_FAR = 22;
-      for (let i = 0; i < petalMeshes.length; i++) {
-        const m = petalMeshes[i];
-        const u = m.userData;
-        if (u.worldX === undefined) continue;
-        const camDist = Math.hypot(camera.position.x - u.worldX, camera.position.y - u.worldY, camera.position.z - u.worldZ);
-        const alpha = Math.min(1, Math.max(0, (camDist - FADE_NEAR) / (FADE_FAR - FADE_NEAR)));
-        m.material.opacity = 0.1 + 0.9 * alpha;
-      }
-=======
         u.worldZ = petalPos.z + pwz;
       }
 
@@ -1135,12 +1008,12 @@ export function initRender(canvas) {
         mat.uniforms.uCameraPos.value.copy(camera.position);
       }
       grass.update(timeSec, petalPos, bank, wind, camera.position);
->>>>>>> d6a32f1
 
-      // Rich grass: feed it the camera + petal + time every frame.
-      grass.update(timeSec, petal.position, bank, { x: 0, y: -1 }, camera.position);
+      // Sun and shadow follow the player smoothly down the meadow
+      sun.position.set(petalPos.x + 40, 70, petalPos.z + 25);
+      sun.target.position.set(petalPos.x, petalPos.y, petalPos.z);
 
-      // Flowers: planted on the terrain in true world coords.
+      // Flowers: planted on the terrain in true world coords (meshes at origin).
       if (budMeshes.length) {
         const dummy = new THREE.Object3D();
         for (let i = 0; i < budData.length; i++) {
@@ -1148,30 +1021,31 @@ export function initRender(canvas) {
           if (!b) continue;
           const kind = (b.kind ?? 0) % KIND_GEOMETRIES.length;
           const mesh = budMeshes[kind];
-          const stemMesh = stemMeshes[kind];
           if (!mesh) continue;
           const local = budLocal[i];
-          const groundY = HILLS.height(b.x, b.z);
-          const crownY = groundY + CROWN_LIFT;
+          const ground = HILLS.height(b.x, b.z);
+          const crownY = ground + CROWN_LIFT;
+          const stemMesh = stemMeshes[kind];
           if (budTimes[i] !== null) {
             budTimes[i] += dt;
-            const kt = Math.min(1, budTimes[i] / 0.25);
+            const kt = budTimes[i] / 0.25;
             if (budTimes[i] > 0.25) {
               dummy.position.set(b.x, -500, b.z);
               dummy.scale.setScalar(0.001);
               if (stemMesh) {
                 const sd = new THREE.Object3D();
-                sd.position.set(b.x, groundY, b.z);
+                sd.position.set(b.x, ground, b.z);
                 sd.scale.set(1, 0.001, 1);
                 sd.updateMatrix();
                 stemMesh.setMatrixAt(local, sd.matrix);
               }
             } else {
+              const sc = (1 - kt) * KIND_SCALE[kind];
               dummy.position.set(b.x, crownY, b.z);
-              dummy.scale.setScalar((1 - kt) * KIND_SCALE[kind]);
+              dummy.scale.setScalar(sc);
               if (stemMesh) {
                 const sd = new THREE.Object3D();
-                sd.position.set(b.x, groundY, b.z);
+                sd.position.set(b.x, ground, b.z);
                 sd.scale.set(1, STEM_LEN * (1 - kt), 1);
                 sd.updateMatrix();
                 stemMesh.setMatrixAt(local, sd.matrix);
@@ -1183,8 +1057,8 @@ export function initRender(canvas) {
             dummy.scale.setScalar(sc * KIND_SCALE[kind]);
             if (stemMesh) {
               const sd = new THREE.Object3D();
-              sd.position.set(b.x, groundY, b.z);
-              sd.rotation.z = Math.sin(timeSec * 1.6 + i) * 0.04;
+              sd.position.set(b.x, ground, b.z);
+              sd.rotation.z = Math.sin(timeSec * 1.6 + i) * 0.04; // gentle sway
               sd.scale.set(1, STEM_LEN, 1);
               sd.updateMatrix();
               stemMesh.setMatrixAt(local, sd.matrix);
@@ -1210,14 +1084,14 @@ export function initRender(canvas) {
         }
       }
 
-      // Mother bloom pulse.
+      // Mother bloom: ride the terrain + pulse in true world coords.
       if (mother.visible) {
         const m = 1 + Math.sin(timeSec * 1.8) * 0.08;
         mother.scale.setScalar(m);
         mother.rotation.z += dt * 0.4;
         mother.position.set(
           mother.userData.wx,
-          HILLS.height(mother.userData.wx, mother.userData.wz) + 2.6,
+          HILLS.height(mother.userData.wx, mother.userData.wz) + 1.8,
           mother.userData.wz
         );
       }
@@ -1230,9 +1104,11 @@ export function initRender(canvas) {
         c.position.z = camera.position.z + c.userData.zo;
       }
 
-      // Wind streaks: linear flow along the travel direction, faster when
-      // steering.
-      const flowSpeed = 2.0 + windIntensity * 7;
+      // Wind streaks: linear flow along the travel direction. When the player
+      // banks (windIntensity up), the air rushes past visibly faster — the
+      // slivers stream along the axis at a speed proportional to the steering,
+      // and they lean/slip back so the motion reads as sustained rush.
+      const flowSpeed = 2.0 + windIntensity * 7; // world units/s along flow
       if (streakMat) {
         const dirX = camera.position.x - petalPos.x;
         const dirZ = camera.position.z - petalPos.z;
@@ -1242,12 +1118,19 @@ export function initRender(canvas) {
         const sDummy = new THREE.Object3D();
         for (let i = 0; i < STREAK_N; i++) {
           const s = streakSeeds[i];
-          s.progress = (s.progress + (flowSpeed * dt) / (s.r * 1.2 + 1.5)) % 1;
+          // Each sliver has a flow progress along the petal->camera axis;
+          // advance it with the wind speed and wrap it back to the petal.
+          s.progress += (flowSpeed * dt) / (s.r * 1.2 + 1.5);
+          if (s.progress > 1) {
+            s.progress = 0;
+            s.ang = Math.random() * Math.PI * 2;
+          }
           const latX = Math.cos(s.ang + timeSec * s.spin) * (0.7 + s.r * 0.3);
           const latY = Math.sin(s.ang * 1.7 + timeSec * s.spin * 0.8) * 0.5 + s.yoff;
           const pxw = petalPos.x + ex * s.progress * dirLen * 0.8 + latX;
           const pzw = petalPos.z + ez * s.progress * dirLen * 0.8 + Math.sin(s.ang * 2 + timeSec * 0.7) * 0.4;
           sDummy.position.set(pxw, petalPos.y + latY, pzw);
+          // Long axis along the flow; faster flow streaks lean more.
           sDummy.quaternion.setFromUnitVectors(
             new THREE.Vector3(0, 1, 0),
             new THREE.Vector3(ex, 0, ez).normalize()
@@ -1261,7 +1144,9 @@ export function initRender(canvas) {
         streakMat.opacity = 0.05 + windIntensity * 0.35;
       }
 
-      // Camera.
+      // Camera trails behind (larger z) and above the petal, looking ahead.
+      // While steering (windIntensity up), pull the camera back so the POV
+      // zooms out and the whole wind effect is in frame.
       const zoom = 1 + windIntensity * 1.6;
       const target = new THREE.Vector3(
         petalPos.x * 0.6 * zoom - camera.rotation.y * windIntensity,
@@ -1270,8 +1155,6 @@ export function initRender(canvas) {
       );
       camera.position.lerp(target, 1 - Math.pow(0.0015, dt));
       camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30 - windIntensity * 10);
-<<<<<<< HEAD
-=======
 
       // Proximity: petals near the camera fade toward translucent, graduating
       // smoothly across the band. The default POV puts ring petals ~15 units
@@ -1292,7 +1175,6 @@ export function initRender(canvas) {
         const alpha = Math.min(1, Math.max(0, (camDist - FADE_NEAR) / (FADE_FAR - FADE_NEAR)));
         m.material.uniforms.uOpacity.value = 0.1 + 0.9 * alpha; // nearly gone when right at the lens
       }
->>>>>>> d6a32f1
     },
   };
 
@@ -1317,44 +1199,25 @@ export function initRender(canvas) {
     stemMeshes = [];
     perKind.forEach((indices, k) => {
       if (!indices.length) return;
-<<<<<<< HEAD
-      // Instance-tinted flower crowns via the sun-lit shader; three injects
-      // instanceColor into ShaderMaterial? No — we bake iColor per instance.
-      const mesh = new THREE.InstancedMesh(KIND_GEOMETRIES[k], makeShadedMaterial(0xffffff, false), indices.length);
-=======
       const mesh = new THREE.InstancedMesh(
         KIND_GEOMETRIES[k],
         flowerCrownMat,
         indices.length
       );
->>>>>>> d6a32f1
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      const colors = new Float32Array(indices.length * 3);
       indices.forEach((idx, local) => {
         budLocal[idx] = local;
-        const c = new THREE.Color(buds[idx].colorHex);
-        colors[local * 3] = c.r;
-        colors[local * 3 + 1] = c.g;
-        colors[local * 3 + 2] = c.b;
+        mesh.setColorAt(local, new THREE.Color(buds[idx].colorHex));
       });
-<<<<<<< HEAD
-      mesh.geometry.setAttribute('iColor', new THREE.InstancedBufferAttribute(colors, 3));
-      mesh.material.defines = { HAS_ICOLOR: '' };
-      mesh.material.needsUpdate = true;
-=======
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
->>>>>>> d6a32f1
       mesh.castShadow = true;
+      mesh.frustumCulled = false;
       scene.add(mesh);
       budMeshes[k] = mesh;
 
-<<<<<<< HEAD
-      const stems = new THREE.InstancedMesh(STEM_GEO, makeShadedMaterial(0x3e8f3e, false), indices.length);
-=======
       // A stem beneath each crown of this kind.
       const stems = new THREE.InstancedMesh(STEM_GEO, stemMat, indices.length);
       stems.frustumCulled = false;
->>>>>>> d6a32f1
       const sd = new THREE.Object3D();
       indices.forEach((idx, local) => {
         const b = buds[idx];
