@@ -154,10 +154,24 @@ export function initRender(canvas) {
     }
   }
 
-  const ambient = new THREE.AmbientLight(0xffffff, 0.7);
-  const sun = new THREE.DirectionalLight(0xffffff, 1.1);
-  sun.position.set(30, 60, 20);
+  // Shading: a cold sky fill + a warm key sun cast from one side so the
+  // rolling hills, flowers and petals get real form (lit side vs shadow).
+  const ambient = new THREE.HemisphereLight(0xcfe8ff, 0x9ecb6a, 0.85);
+  const sun = new THREE.DirectionalLight(0xfff2d8, 1.5);
+  sun.position.set(40, 70, 25);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.camera.near = 5;
+  sun.shadow.camera.far = 220;
+  sun.shadow.camera.left = -60;
+  sun.shadow.camera.right = 60;
+  sun.shadow.camera.top = 60;
+  sun.shadow.camera.bottom = -60;
   scene.add(ambient, sun);
+  ground.receiveShadow = true; // hills catch shade from flowers/petals
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  petal.traverse((o) => { if (o.isMesh) o.castShadow = true; });
 
   // --- Buds (one InstancedMesh per kind, child of world) ---
   let budMeshes = [];
@@ -182,6 +196,7 @@ export function initRender(canvas) {
   mother.visible = false;
   mother.userData.wx = 0;
   mother.userData.wz = 0;
+  mother.castShadow = true;
   world.add(mother);
 
   // Clouds.

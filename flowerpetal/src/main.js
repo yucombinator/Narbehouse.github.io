@@ -115,6 +115,13 @@ const BLOOM_REACH = 5; // distance to mother bloom that ends a meadow
 let meadowSeed = 42;
 let trail = generateTrail({ seed: meadowSeed });
 let petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0, y: trail.pointAt(trail.zStart).y };
+
+// Invariant: the petal never dips below the terrain. Applied every frame so
+// wind, assist, or teleports cannot bury us underground.
+function clampAboveGround() {
+  const floor = HILLS.height(petal.x, petal.z) + 0.8;
+  if (petal.y < floor) petal.y = floor;
+}
 let meadowBuds = 0;
 let meadowTotal = trail.buds.length;
 let size = 1;
@@ -275,7 +282,7 @@ function bloomCheck() {
   blooms = next.blooms;
   totalBuds = next.totalBuds;
   trail = generateTrail({ seed: meadowSeed });
-  petal = { x: trail.pointAt(trail.zStart).x + 2, z: trail.zStart, bank: 0, y: 6 };
+  petal = { x: trail.pointAt(trail.zStart).x + 2, z: trail.zStart, bank: 0, y: trail.pointAt(trail.zStart).y };
   meadowBuds = 0;
   meadowTotal = trail.buds.length;
   collectedSet = new Set();
@@ -318,7 +325,9 @@ function loop() {
   // Ease altitude toward the target for a smooth guided float.
   const y = petal.y + (targetY - petal.y) * Math.min(1, dt * 2.2) + wind.bobY * dt;
   petal = { x: m.x + wind.swayVx * dt, z: m.z, y, bank: m.bank };
+  clampAboveGround(); // safety net: never under the hills
   windAssist(dt);
+  clampAboveGround(); // wind assist may have pushed us sideways; re-clamp
   checkCollection();
   bloomCheck();
   render.setPetalSize(size);
@@ -375,7 +384,7 @@ function doReset() {
   // Return the petal to its starting meadow, at starting size.
   meadowSeed = 42;
   trail = generateTrail({ seed: meadowSeed });
-  petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0, y: 6 };
+  petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0, y: trail.pointAt(trail.zStart).y };
   meadowBuds = 0;
   meadowTotal = trail.buds.length;
   collectedSet = new Set();
