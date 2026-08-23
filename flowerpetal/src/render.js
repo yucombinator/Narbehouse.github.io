@@ -145,6 +145,7 @@ export function initRender(canvas) {
   const grassMat = new THREE.MeshBasicMaterial({ color: 0x6fbf4a, side: THREE.DoubleSide });
   const grass = new THREE.InstancedMesh(grassGeo, grassMat, GRASS_N);
   grass.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  grass.frustumCulled = false; // re-centers on the player every frame
   const gDummy = new THREE.Object3D();
   const grassSeeds = [];
   for (let i = 0; i < GRASS_N; i++) {
@@ -346,6 +347,9 @@ export function initRender(canvas) {
   });
   const streakMesh = new THREE.InstancedMesh(streakGeo, streakMat, STREAK_N);
   streakMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  // Lives around the moving player — never frustum-cull it or the whole ring
+  // vanishes once the origin drifts out of the initial bounds.
+  streakMesh.frustumCulled = false;
   const streakSeeds = [];
   for (let i = 0; i < STREAK_N; i++) {
     streakSeeds.push({
