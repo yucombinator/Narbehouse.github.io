@@ -362,7 +362,7 @@ export function initRender(canvas) {
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
       // Wind intensity eases toward the steering input so the breeze visibly
       // picks up when banking and calms when cruising straight.
-      windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 2.5));
+      	      windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 1.1));
       // Wind-swirl: each petal churns around its own orbit — speed and
       // direction vary per petal, offset by the live wind (swayVx), so the
       // wreath tumbles with the breeze instead of circling rigidly.
@@ -531,7 +531,7 @@ export function initRender(canvas) {
       // Camera trails behind (larger z) and above the petal, looking ahead.
       // While steering (windIntensity up), pull the camera back so the POV
       // zooms out and the whole wind effect is in frame.
-      const zoom = 1 + windIntensity * 3.2;
+      	      const zoom = 1 + windIntensity * 1.6;
       const target = new THREE.Vector3(
         petalPos.x * 0.6 * zoom - camera.rotation.y * windIntensity,
         petalPos.y * 0.55 + 4.2 + windIntensity * 2.4,
