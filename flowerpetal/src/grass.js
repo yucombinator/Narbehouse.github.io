@@ -192,6 +192,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       uTime: { value: 0 },
       uCameraPos: { value: new THREE.Vector3() },
       uPetalPos: { value: new THREE.Vector3() },
+      uPetalColor: { value: new THREE.Color(1, 0.6, 0.75) },
       uPetalBank: { value: 0 },
       uTrail: { value: trailArray },
       uTrailCount: { value: TRAIL_MAX },
@@ -213,6 +214,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       uniform float uTime;
       uniform vec3 uCameraPos;
       uniform vec3 uPetalPos;
+      uniform vec3 uPetalColor;
       uniform float uPetalBank;
       uniform vec4 uTrail[TRAIL_MAX];
       uniform int uTrailCount;
@@ -473,6 +475,8 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       precision highp float;
 
       uniform vec3 uSunDir;
+      uniform vec3 uPetalPos;
+      uniform vec3 uPetalColor;
       uniform vec3 fogColor;
       uniform float fogNear;
       uniform float fogFar;
@@ -541,7 +545,17 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
 
         vec3 finalColor = baseColor * (skyLight + sunLight);
 
-        // Blend into ground color towards domain edges
+        // Soft glow from the player's petals onto the grass beneath: a warm
+        // coloured halo that falls off with horizontal distance from the petal.
+        {
+          float dx = vWorldPos.x - uPetalPos.x;
+          float dz = vWorldPos.z - uPetalPos.z;
+          float dist = sqrt(dx * dx + dz * dz);
+          float halo = exp(-dist * dist * 0.045) * 0.32;
+          finalColor += uPetalColor * halo;
+        }
+
+        // Blend into turf colour towards domain edges
         vec3 groundColor = mix(vec3(0.20, 0.36, 0.14), vec3(0.32, 0.52, 0.20), 0.5);
         finalColor = mix(groundColor, finalColor, vEdgeFade);
 
@@ -561,7 +575,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   mesh.frustumCulled = false;
   scene.add(mesh);
 
-  function update(timeSec, petalPos, bank, wind, cameraPos) {
+  function update(timeSec, petalPos, bank, wind, cameraPos, petalColor) {
     // Update flight path history for persistent grass trample trail
     const distMoved = lastTrailPos.distanceTo(petalPos);
     if (timeSec - lastTrailTime > 0.08 || distMoved > 0.4) {
@@ -577,11 +591,12 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
     grassMat.uniforms.uTime.value = timeSec;
     grassMat.uniforms.uPetalPos.value.set(petalPos.x, petalPos.y, petalPos.z);
     grassMat.uniforms.uPetalBank.value = bank;
+    if (petalColor) grassMat.uniforms.uPetalColor.value.set(petalColor.r, petalColor.g, petalColor.b);
     grassMat.uniforms.uWindDir.value.set(0.0, -1.0);
     grassMat.uniforms.uWindStrength.value = 1.0;
   }
 
-  function dispose() {
+  	function dispose() {
     scene.remove(mesh);
     bladeBaseGeo.dispose();
     grassGeo.dispose();

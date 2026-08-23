@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_KINDS } from './trail.js';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=5';
+import { createGrass } from './grass.js?v=6';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -191,14 +191,14 @@ const MOTHER_FRAGMENT_SHADER = `
     vec3 baseColor = mix(uColor * vColor, pollenColor * vColor, vCenter);
 
     float nDotL = max(0.0, dot(vNormal, sunDir));
-    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * (0.60 * (1.0 - vCenter * 0.45));
+    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * (0.34 * (1.0 - vCenter * 0.45));
 
-    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.42 + 0.32 * max(0.0, vNormal.y));
-    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.75 + sss);
+    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.26 + 0.26 * max(0.0, vNormal.y));
+    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.55 + sss);
 
-    float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.8) * 0.40;
+    float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.8) * 0.22;
 
-    vec3 emissive = uColor * 0.32;
+    vec3 emissive = uColor * 0.14;
     vec3 finalColor = baseColor * (skyLight + sunLight) + emissive + vec3(1.0, 0.96, 0.88) * fresnel;
 
     float depth = gl_FragCoord.z / gl_FragCoord.w;
@@ -686,6 +686,8 @@ export function initRender(canvas) {
   const petalMats = [];
   const petalMeshes = [];
   let petalColors = [0xff9ec0];
+  let curPetalColor = 0xff9ec0; // most recently acquired petal colour -> grass glow
+  const petalColorVec = new THREE.Color(); // reusable (avoids per-frame alloc)
   let nowSec = 0; // game clock, cached from frame() for eases
   let petalGeometry = PETAL_GEO; // upgraded to the CC-BY model when loaded
   let windIntensity = 0; // 0 = calm, 1 = full wind rush (ramps with steering)
@@ -902,6 +904,7 @@ export function initRender(canvas) {
         petalColors.shift();
       }
       petalColors.push(hex);
+      curPetalColor = hex; // glow the grass beneath with the newest petal colour
       spawnPetalMesh(); // only the new petal animates — the swarm stays put
     },
     setPetalCount(n) {
@@ -1007,7 +1010,7 @@ export function initRender(canvas) {
       for (const mat of petalMats) {
         mat.uniforms.uCameraPos.value.copy(camera.position);
       }
-      grass.update(timeSec, petalPos, bank, wind, camera.position);
+      grass.update(timeSec, petalPos, bank, wind, camera.position, petalColorVec.setHex(curPetalColor));
 
       // Sun and shadow follow the player smoothly down the meadow
       sun.position.set(petalPos.x + 40, 70, petalPos.z + 25);
