@@ -6,7 +6,7 @@ export const TOTAL_STOPS = 5;
 
 // A full game is a session of up to five stages; each stage ends with one
 // postcard in the album.
-export const TOTAL_STAGES = 5;
+export const TOTAL_STAGES = 3;
 
 export const PHASES = ['FLYING', 'STOPPING', 'DRIFTING', 'CEREMONY', 'DONE'];
 

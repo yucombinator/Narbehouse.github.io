@@ -18,7 +18,7 @@ export const ROSTER = [
     shape: 'daisy', petalHex: '#f2b01e', centerHex: '#4a2c17',
     fact: 'A sunny prairie classic' },
   { id: 'oxeye-daisy', name: 'Oxeye Daisy', tts: 'Oxeye daisy',
-    shape: 'daisy', petalHex: '#fbfbf4', centerHex: '#f2c21e',
+    shape: 'daisy', petalHex: '#f6ecd4', centerHex: '#f2c21e',
     fact: 'A meadow classic' },
   { id: 'cosmos', name: 'Cosmos', tts: 'Cosmos',
     shape: 'daisy', petalHex: '#ee86b5', centerHex: '#f2c21e',
@@ -63,7 +63,7 @@ export const ROSTER = [
     shape: 'puff', petalHex: '#f7e04b', centerHex: '#8a5a2a',
     fact: "Oregon's state flower" },
   { id: 'white-clover', name: 'White Clover', tts: 'White clover',
-    shape: 'puff', petalHex: '#f6f6ee', centerHex: '#e0e0d2',
+    shape: 'puff', petalHex: '#f2ebd6', centerHex: '#e0e0d2',
     fact: 'Sweet little lawns of white' },
 
   // --- Recognizable garden classics ---------------------------------------
@@ -74,7 +74,7 @@ export const ROSTER = [
     shape: 'puff', petalHex: '#f5a623', centerHex: '#c8781a',
     fact: 'Golden ruffles gardens love' },
   { id: 'jasmine', name: 'Jasmine', tts: 'Jasmine',
-    shape: 'daisy', petalHex: '#fafafa', centerHex: '#f2e18c',
+    shape: 'daisy', petalHex: '#f5edd9', centerHex: '#f2e18c',
     fact: 'Tiny stars with a night perfume' },
   { id: 'lavender', name: 'Lavender', tts: 'Lavender',
     shape: 'bell', petalHex: '#b39ddb', centerHex: '#8f76c2',

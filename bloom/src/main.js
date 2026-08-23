@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { initRender, resize } from './render.js?v=19';
-import { generateTrail, CRUISE_SPEED, FLOWER_KINDS } from './trail.js?v=3';
+import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS } from './trail.js?v=3';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
 import { sampleChoices, flowerById, bouquetTitle, segmentMood } from './flowers.js';
@@ -53,10 +53,9 @@ function bindHold(el, key) {
   el.addEventListener('pointerleave', set(false));
 }
 
-const btnL = document.getElementById('btnL');
-const btnR = document.getElementById('btnR');
-bindHold(btnL, 'left');
-bindHold(btnR, 'right');
+// Steering is invisible by design — the whole screen is the button (left /
+// right halves, or the arrow keys). No on-screen LEFT/RIGHT labels: they
+// suggested the game wanted deliberate steering, and it doesn't.
 
 function keyIsLeft(e) {
   return e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A' || e.key === ' ';
@@ -110,19 +109,8 @@ canvas.addEventListener('pointerleave', () => {
   input.right = false;
 });
 
-// Steering buttons (created in JS; overlays come in Task 8).
-for (const [id, key, label] of [['btnL', 'left', '◀ LEFT'], ['btnR', 'right', 'RIGHT ▶']]) {
-  const d = document.createElement('div');
-  d.id = id;
-  d.textContent = label;
-  d.style.cssText =
-    'position:fixed;bottom:24px;font-size:28px;font-weight:bold;color:#5a2a4a;' +
-    'background:rgba(255,255,255,0.75);border:3px solid #5a2a4a;border-radius:20px;' +
-    'padding:18px 30px;user-select:none;touch-action:none;cursor:pointer;z-index:10;' +
-    (key === 'left' ? 'left:24px;' : 'right:24px;');
-  document.body.appendChild(d);
-  bindHold(d, key);
-}
+// (On-screen steering buttons removed — the whole screen steers; see the
+// note above. Overlays come in Task 8.)
 
 // --- Game state --------------------------------------------------------
 const WIND_THRESHOLD = 16; // lateral distance before wind assist kicks in
@@ -281,7 +269,7 @@ window.__petalGame = {
     render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
-    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1 };
+    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active };
   },
   bud(i) {
     return trail.buds[i]
@@ -607,6 +595,9 @@ function commitFocused(k) {
   run = commitPick(run, f.id, stopOffer);
   closeStop();
   hushSpeech();
+  // Always name the chosen flower aloud — including the very first one,
+  // picked without any scanning step before it.
+  speak(`${f.name} added to your basket`);
   basketPicks.push(f.id);
   addToBasket(f);
   size = stepSize(size);
@@ -674,8 +665,8 @@ function focusScanItem(k) {
   btnFlyOn.classList.toggle('scanFocused', false);
   btnRest.classList.toggle('scanFocused', false);
   clearInterval(scanTimer);
-  if (item.act === 'next') {
-    cerPos.textContent = 'Fly on to the next meadow?';
+  if (item.act === 'send') {
+    cerPos.textContent = 'Send it fluttering to someone special?';
     btnFlyOn.classList.toggle('scanFocused', true);
     armInterludeTimer();
   } else {
@@ -691,19 +682,31 @@ function armInterludeTimer() {
 }
 
 function buildScanItems() {
-  scanItems = [];
-  if (stageIndex < TOTAL_STAGES - 1 || sessionCards.length < TOTAL_STAGES) {
-    scanItems.push({ type: 'act', act: 'next' });
-  }
-  scanItems.push({ type: 'act', act: 'rest' });
+  // The postcard only leaves when Ben says so — sending is the gate to the
+  // next meadow (or, after the last one, to the end of the day).
+  scanItems = [
+    { type: 'act', act: 'send' },
+    { type: 'act', act: 'rest' },
+  ];
+}
+
+// The haiku has been heard; now the two gentle choices take the stage.
+function enterSendChoices() {
+  if (!ceremonyOpen() || interludePhase !== 'reveal') return;
+  clearTimeout(haikuGuard);
+  interludePhase = 'choices';
+  cerEl.classList.remove('pre-choices');
+  buildScanItems();
+  focusScanItem(0);
 }
 
 // Send-off: the postcard flies into the mailbox and is gone for good.
+// Sending always carries Ben onward — or, after the final meadow, ends the
+// day with every card on its way.
 function startMailing() {
-  if (!ceremonyOpen() || interludePhase !== 'reveal') return;
+  if (!ceremonyOpen() || interludePhase !== 'choices') return;
   interludePhase = 'mailing';
   clearInterval(scanTimer);
-  clearTimeout(haikuGuard); // narration is done or skipped
   cerPos.textContent = 'Off it goes…';
   cerEl.classList.add('mail-time');
   postcardEl.classList.remove('postcard-in-r', 'postcard-in-l');
@@ -713,14 +716,23 @@ function startMailing() {
   mailTimer = setTimeout(() => {
     if (!ceremonyOpen()) return;
     cerEl.classList.add('mailed'); // pops the little flag up
-    cerEl.classList.remove('pre-choices'); // choices take the stage
     audio?.chime?.(660); // gentle send-off chime
     speak('In the mail!');
     cerPos.textContent = 'Postcard mailed ✓';
-    interludePhase = 'choices';
-    buildScanItems();
-    focusScanItem(0);
+    mailTimer = setTimeout(proceedAfterSend, 1100); // let the moment land
   }, 1500);
+}
+
+function proceedAfterSend() {
+  if (!ceremonyOpen()) return;
+  closeInterlude();
+  if (stageIndex < TOTAL_STAGES) {
+    flyNextStage();
+  } else {
+    toast('Every postcard is on its way.');
+    speak('All your postcards are on their way. Rest well.');
+    toTitle();
+  }
 }
 
 let haikuGuard = null;
@@ -733,11 +745,11 @@ function startReveal(rec) {
   fillPostcard(rec, rec.dealDir || 0);
   // The newest meadow's haiku is narrated exactly once; Enter replays it.
   // Safety net: if the utterance never reports its end (headless browsers,
-  // wedged engines), the send-off still arrives.
+  // wedged engines), the choices still arrive.
   rec.narrated = true;
-  const spoke = holdScanForSpeech(() => startMailing());
+  const spoke = holdScanForSpeech(() => enterSendChoices());
   clearTimeout(haikuGuard);
-  if (spoke) haikuGuard = setTimeout(() => startMailing(), 12000);
+  if (spoke) haikuGuard = setTimeout(() => enterSendChoices(), 12000);
 }
 
 function openInterlude(newestFirst = true) {
@@ -785,25 +797,20 @@ function flyNextStage() {
 }
 
 function activateScanItem() {
-  if (interludePhase !== 'choices') return; // choices unlock after the send-off
+  if (interludePhase !== 'choices') return; // choices unlock after the haiku
   const item = scanItems[scanFocus];
   if (!item) return;
-  if (item.act === 'next') {
-    closeInterlude();
-    flyNextStage(); // stageIndex already advanced when the card was stamped
+  if (item.act === 'send') {
+    startMailing(); // the send-off itself carries Ben onward
   } else {
     toTitle();
   }
 }
-if (btnFlyOn) btnFlyOn.addEventListener('click', () => { if (ceremonyOpen() && interludePhase === 'choices') activateScanItemAt('next'); });
+if (btnFlyOn) btnFlyOn.addEventListener('click', () => { if (ceremonyOpen() && interludePhase === 'choices') activateScanItemAt('send'); });
 if (btnRest) btnRest.addEventListener('click', () => { if (ceremonyOpen() && interludePhase === 'choices') activateScanItemAt('rest'); });
 function activateScanItemAt(act) {
-  closeInterlude();
-  if (act === 'next') {
-    flyNextStage();
-  } else {
-    toTitle();
-  }
+  if (act === 'send') startMailing();
+  else toTitle();
 }
 
 // --- Pause menu (hold Return anywhere in gameplay) ------------------------
@@ -1069,7 +1076,7 @@ function addStopSpill(t) {
         y: HILLS.height(x, z) + 2.4,
         z: z + (rng() - 0.5) * 2.5,
         colorHex: parseInt(colHex.slice(1), 16),
-        kind: Math.floor(rng() * FLOWER_KINDS.length),
+        kind: Math.floor(rng() * FLOWER_VARIANTS.length),
         kindIndex: 0,
         cluster: -(i + 1), // sentinel: spill bud for stop i
       });
@@ -1077,7 +1084,7 @@ function addStopSpill(t) {
   }
   t.buds.push(...extra);
   t.buds.sort((a, b) => b.z - a.z);
-  const counts = Array.from({ length: FLOWER_KINDS.length }, () => 0);
+  const counts = Array.from({ length: FLOWER_VARIANTS.length }, () => 0);
   for (const b of t.buds) b.kindIndex = counts[b.kind]++;
 }
 
@@ -1186,18 +1193,48 @@ function elasticCenter(dt) {
   petal.x += pull * dt;
 }
 
+// --- Gust riding -----------------------------------------------------------
+// Every so often a warm updraft slides under the petal and carries it in a
+// slow arc — no input asked, nothing to do but ride it. Pure ambience.
+const gust = { next: 7 + Math.random() * 8, active: false, t: 0, dur: 0, peak: 0 };
+
+function gustUpdate(dt) {
+  if (!gust.active) {
+    gust.next -= dt;
+    if (gust.next <= 0) {
+      gust.active = true;
+      gust.t = 0;
+      gust.dur = 4.5 + Math.random() * 2.5;   // seconds aloft
+      gust.peak = 5 + Math.random() * 3.5;    // how high the arc lifts
+    }
+    return 0;
+  }
+  gust.t += dt;
+  if (gust.t >= gust.dur) {
+    gust.active = false;
+    gust.next = 9 + Math.random() * 9;
+    return 0;
+  }
+  const k = gust.t / gust.dur;
+  return Math.sin(Math.PI * k) ** 2 * gust.peak; // smooth rise, gentle settle
+}
+
 function loop() {
   const dt = Math.min(clock.getDelta(), 1 / 20);
   const wind = windAt(clock.elapsedTime, meadowSeed);
   // The world holds its breath while Ben chooses a flower, watches the
   // ceremony, or pauses; ambient petals keep swaying gently in the background.
   const frozen = paused || isStopOpen || run.phase === 'CEREMONY' || run.phase === 'DONE';
+  let gustLift = 0;
   if (!frozen) {
-    const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor }, input.left, input.right);
+    gustLift = gustUpdate(dt);
+    const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor * (gust.active ? 1.06 : 1) }, input.left, input.right);
     petal = { x: m.x + wind.swayVx * dt, z: m.z, y: petal.y + wind.bobY * dt, bank: m.bank };
-    const targetY = flightTargetY();
+    // The gust adds its lift to the altitude target, so the existing ease
+    // turns it into one long breath of height instead of a jolt.
+    const targetY = flightTargetY() + gustLift;
     // Ease altitude toward the target for a smooth guided float.
-    petal.y += (targetY - petal.y) * Math.min(1, dt * 2.2);
+    petal.y += (targetY - petal.y) * Math.min(1, dt * (gust.active ? 1.4 : 2.2));
     clampAboveGround(); // safety net: never under the hills
     elasticCenter(dt); // weak rubber-band pull back to the path
     clampAboveGround(); // clamps again after lateral pulls
@@ -1341,11 +1378,11 @@ document.addEventListener('keydown', (e) => {
     // chooses, Escape rests.
     if (interludePhase === 'reveal') {
       if (e.key === ' ') {
-        hushSpeech(); // skip ahead to the send-off
-        startMailing();
+        hushSpeech(); // skip ahead to the send / rest choices
+        enterSendChoices();
         e.preventDefault();
       } else if (e.key === 'Enter') {
-        holdScanForSpeech(() => startMailing()); // replay the haiku, then mail
+        holdScanForSpeech(() => enterSendChoices()); // replay the haiku
         e.preventDefault();
       } else if (e.key === 'Escape') {
         toTitle();

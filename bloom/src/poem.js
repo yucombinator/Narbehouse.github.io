@@ -127,6 +127,7 @@ function hexToHsl(hex) {
 export function moodKeyForHex(hex) {
   const c = hexToHsl(hex);
   if (!c || c.l > 0.92 || c.s < 0.22) return 'cream'; // whites/near-whites
+  if (c.l > 0.86 && c.s < 0.72 && c.h >= 20 && c.h < 75) return 'cream'; // warm ivory — white flowers, gently warmed
   if (c.h >= 300 || c.h < 15) return 'rose'; // pinks, crimsons, reds
   if (c.h < 80) return 'sun'; // golds, oranges, warm yellows
   if (c.h >= 195 && c.h < 300) return 'sky'; // blues, violets

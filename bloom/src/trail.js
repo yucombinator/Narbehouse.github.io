@@ -31,6 +31,23 @@ export const FLOWER_KINDS = [
   { petals: 8, spread: 1.35, bigCenter: 0.2 },  // airy cluster
 ];
 
+// Meadow geometry variants: each carries a SHAPE so tulips cup, roses
+// rosette, bells nod and puffs round out — believable forms instead of one
+// fan repeated. Tulip and rose deliberately have two configurations each,
+// so the same species can appear closed or open.
+export const FLOWER_VARIANTS = [
+  { shape: 'daisy', petals: 5, spread: 1.0, bigCenter: 0.3 },
+  { shape: 'daisy', petals: 6, spread: 1.15, bigCenter: 0.24 },
+  { shape: 'daisy', petals: 4, spread: 0.95, bigCenter: 0.22 },
+  { shape: 'daisy', petals: 8, spread: 1.35, bigCenter: 0.2 },
+  { shape: 'cup', petals: 6, spread: 0.92, bigCenter: 0.16 },    // closed tulip
+  { shape: 'star', petals: 6, spread: 1.2, bigCenter: 0.18 },    // open tulip
+  { shape: 'rosette', petals: 8, spread: 1.05, bigCenter: 0.18 }, // full rose
+  { shape: 'wild', petals: 5, spread: 1.18, bigCenter: 0.26 },   // wild rose
+  { shape: 'bell', petals: 5, spread: 0.9, bigCenter: 0.16 },    // nodding bell
+  { shape: 'puff', petals: 9, spread: 1.05, bigCenter: 0.14 },   // soft pompom
+];
+
 // Worst-case |x''| a max-bank turn can follow: a_lat / v^2, a_lat = g*tan(bank).
 export function holdableCurvature(v = CRUISE_SPEED) {
   return (G_EFF * Math.tan((MAX_BANK_DEG * Math.PI) / 180)) / (v * v);
@@ -71,7 +88,7 @@ export function generateTrail({ seed, length = 400 }) {
       const r = Math.sqrt(rand()) * CLUSTER_RADIUS;
       const bx = cx + Math.cos(a) * r;
       const bz = cz + Math.sin(a) * r;
-      const kind = Math.floor(rand() * FLOWER_KINDS.length);
+      const kind = Math.floor(rand() * FLOWER_VARIANTS.length);
       // Flowers grow on stems sticking just above the grass field
       const gy = HILLS.height(bx, bz) + 3.55;
       buds.push({
@@ -89,7 +106,7 @@ export function generateTrail({ seed, length = 400 }) {
   }
   buds.sort((a, b) => b.z - a.z); // descending z = toward the player's flight
   // Assign a per-kind order so each kind's InstancedMesh indices line up.
-  const kindCounts = Array.from({ length: FLOWER_KINDS.length }, () => 0);
+  const kindCounts = Array.from({ length: FLOWER_VARIANTS.length }, () => 0);
   for (const b of buds) {
     b.kindIndex = kindCounts[b.kind]++;
   }

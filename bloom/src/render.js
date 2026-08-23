@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FLOWER_KINDS } from './trail.js';
+import { FLOWER_VARIANTS } from './trail.js';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
 import { createGrass } from './grass.js?v=9';
@@ -436,22 +436,55 @@ function buildFlowerCenter(centerRadius) {
   return merged;
 }
 
-function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5, spread = 1.0 } = {}) {
+// Layer recipes per shape. Each layer: tilt (radians lifting the petal tip),
+// radius scale, optional half-step angular offset, and z push.
+const SHAPE_LAYERS = {
+  daisy: [ // flat ray fan — the original look
+    { tilt: 0.35, r: 1.0 },
+    { tilt: 0.7, r: 1.0, off: 0.5, z: -0.10 },
+  ],
+  cup: [ // tulip-style: petals gathered upright into a closed cup
+    { tilt: 1.05, r: 1.0 },
+    { tilt: 0.78, r: 0.74, off: 0.5, z: -0.06 },
+  ],
+  star: [ // open tulip: tips flare outward toward the sun
+    { tilt: 0.3, r: 1.05 },
+    { tilt: 0.5, r: 0.8, off: 0.5, z: -0.08 },
+  ],
+  rosette: [ // rose: three stepped layers spiral inward
+    { tilt: 0.45, r: 1.0, off: 0 },
+    { tilt: 0.8, r: 0.68, off: 0.33, z: -0.07 },
+    { tilt: 1.15, r: 0.42, off: 0.66, z: -0.12 },
+  ],
+  wild: [ // wild rose: one open whorl of broad petals
+    { tilt: 0.2, r: 1.08 },
+  ],
+  bell: [ // nodding bell: narrow petals held high
+    { tilt: 1.25, r: 0.95, narrow: 0.62 },
+    { tilt: 1.0, r: 0.7, off: 0.5, narrow: 0.62, z: -0.05 },
+  ],
+  puff: [ // soft pompom: three short rounded tiers
+    { tilt: 0.5, r: 0.95 },
+    { tilt: 0.9, r: 0.68, off: 0.4, z: -0.05 },
+    { tilt: 1.3, r: 0.44, off: 0.75, z: -0.09 },
+  ],
+};
+
+function buildFlowerGeometry({ shape = 'daisy', petalRadius = 0.5, centerRadius = 0.26, petals = 5, spread = 1.0 } = {}) {
   const parts = [];
-  // Two overlapping petal layers, each offset by half a petal. The inner
-  // layer cups more upright, the outer opens flatter, and every petal is
-  // tinted slightly differently so the bloom reads organic, not cloned.
-  for (let layer = 0; layer < 2; layer++) {
-    const tilt = layer === 0 ? 0.35 : 0.7; // radians of upward cup toward +z
+  const layers = SHAPE_LAYERS[shape] || SHAPE_LAYERS.daisy;
+  for (let li = 0; li < layers.length; li++) {
+    const L = layers[li];
+    const wideScale = L.narrow || 1;
     for (let i = 0; i < petals; i++) {
-      const a = ((i + layer * 0.5) / petals) * Math.PI * 2;
-      const g = curvedPetal(petalRadius * 0.9, petalRadius * 0.55, petalTint(i * 2 + layer));
-      g.rotateY(-tilt); // lift the tip toward the viewer
-      g.rotateZ(a);     // fan around the crown
+      const a = ((i + (L.off ?? 0)) / petals) * Math.PI * 2;
+      const g = curvedPetal(petalRadius * 0.9 * L.r, petalRadius * 0.55 * L.r * wideScale * spread, petalTint(i * 2 + li));
+      g.rotateY(-L.tilt); // lift the tip toward the viewer
+      g.rotateZ(a);       // fan around the crown
       g.translate(
         Math.cos(a) * petalRadius * 1.05 * spread,
         Math.sin(a) * petalRadius * 1.05 * spread,
-        (layer === 0 ? 0 : -0.10) // back layer set slightly behind
+        L.z ?? 0 // deeper layers sit slightly behind
       );
       parts.push(g);
     }
@@ -460,8 +493,8 @@ function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 
   return mergeGeometries(parts);
 }
 
-const KIND_GEOMETRIES = FLOWER_KINDS.map((k) =>
-  buildFlowerGeometry({ petalRadius: 0.5, centerRadius: k.bigCenter, petals: k.petals, spread: k.spread })
+const KIND_GEOMETRIES = FLOWER_VARIANTS.map((k) =>
+  buildFlowerGeometry({ shape: k.shape, petalRadius: 0.5, centerRadius: k.bigCenter, petals: k.petals, spread: k.spread })
 );
 const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5, petals: 8, spread: 1.25 });
 
@@ -1489,6 +1522,12 @@ export function initRender(canvas) {
       );
       camera.position.lerp(target, 1 - Math.pow(0.0015, dt));
       camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30 - windIntensity * 10);
+      // Weightless drift: a very slow horizon roll and gentle FOV breathing
+      // so cruising never feels locked on rails. Periods are long (20-30s)
+      // and amplitudes tiny — felt more than seen.
+      camera.rotation.z += Math.sin(timeSec * 0.29) * 0.03 + Math.sin(timeSec * 0.83) * 0.008;
+      camera.fov = 60 + Math.sin(timeSec * 0.21) * 1.3;
+      camera.updateProjectionMatrix();
 
       // Proximity: petals near the camera fade toward translucent, graduating
       // smoothly across the band. The default POV puts ring petals ~15 units
