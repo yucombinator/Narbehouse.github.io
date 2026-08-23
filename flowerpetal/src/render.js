@@ -605,33 +605,36 @@ export function initRender(canvas) {
         c.position.z = camera.position.z + c.userData.zo;
       }
 
-      // Wind streaks swirl AROUND the petals: each line orbits the player on
-      // a slow ring (spiraling forward with the flight direction), so there's
-      // a constant sense of motion around the wreath — thin whispers, not bars.
+      // Wind streaks: linear flow along the travel direction. The camera
+      // trails the flight path, so lines run from the petals toward the
+      // camera — like streamers in a headwind. They bend naturally when the
+      // path curves, carrying the sense of motion without fake spinning.
       if (streakMat) {
+        const dirX = camera.position.x - petalPos.x;
+        const dirZ = camera.position.z - petalPos.z;
+        const dirLen = Math.hypot(dirX, dirZ) || 1;
+        const ex = dirX / dirLen;
+        const ez = dirZ / dirLen;
         const sDummy = new THREE.Object3D();
-        const windAngle = timeSec * 0.5; // slow rotation of the whole ring
         for (let i = 0; i < STREAK_N; i++) {
           const s = streakSeeds[i];
-          const a = s.ang + windAngle + timeSec * s.spin * 0.4;
-          const rr = s.r * (1 + windIntensity * 0.6); // breathes wider when steering
-          // Around the petal in a loose torus; also leans slightly forward
-          // (+z) so the motion reads as wind blowing past.
-          sDummy.position.set(
-            petalPos.x + Math.cos(a) * rr,
-            petalPos.y + Math.sin(a) * rr * 0.3 + s.yoff,
-            petalPos.z + 2.8 + Math.sin(a * 2 + timeSec * 0.9) * (0.8 + windIntensity * 0.6)
-          );
-          // Lean each sliver along the ring tangent so they read as wind
-          // streams curving around, not rigid bars.
-          sDummy.rotation.y = windBias * 0.15 - Math.sin(a) * 0.3;
-          sDummy.rotation.z = Math.cos(a + timeSec * 0.6) * 0.1;
-          sDummy.scale.set(1, 1 + windIntensity * 1.2, 1 + windIntensity * 1.8);
+          // Place each sliver between petal and camera (along the flow) with
+          // a jittered lateral offset so they form a loose bundle of wind.
+          const depth = 1.6 + s.r * (1 + windIntensity * 0.5);
+          const latX = Math.cos(s.ang + timeSec * s.spin) * (0.7 + s.r * 0.3);
+          const latY = Math.sin(s.ang * 1.7 + timeSec * s.spin * 0.8) * 0.5 + s.yoff;
+          const pxw = petalPos.x + ex * depth + latX;
+          const pzw = petalPos.z + ez * depth + Math.sin(s.ang * 2 + timeSec * 0.7) * 0.4;
+          sDummy.position.set(pxw, petalPos.y + latY, pzw);
+          // Long axis along the travel direction; slight flutter while flowing.
+          sDummy.rotation.y = Math.atan2(ex, ez || 0.0001) * -1;
+          sDummy.rotation.z = Math.sin(s.ang * 2 + timeSec * 0.9) * 0.08;
+          sDummy.scale.set(1, 1 + windIntensity * 1.0, 1 + windIntensity * 2.2);
           sDummy.updateMatrix();
           streakMesh.setMatrixAt(i, sDummy.matrix);
         }
         streakMesh.instanceMatrix.needsUpdate = true;
-        streakMat.opacity = 0.05 + windIntensity * 0.3;
+        streakMat.opacity = 0.05 + windIntensity * 0.35;
       }
 
       // Camera trails behind (larger z) and above the petal, looking ahead.
