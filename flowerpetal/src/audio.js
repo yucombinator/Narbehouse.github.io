@@ -29,7 +29,7 @@ const AMBIENT_CHORDS = [
   [174.61, 261.63, 349.23, 440.0],  // F3 C4 F4 A4
 ];
 const CHORD_S = 26;
-const CROSSFADE_S = 8;
+const CROSSFADE_S = 4;
 
 // C major pentatonic, high register (Hz).
 const SPARKLE_NOTES = [523.25, 587.33, 659.25, 783.99, 880.0, 987.77, 1046.5];
@@ -39,7 +39,7 @@ export function initAudio() {
   try {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain();
-    master.gain.value = 0.6;
+    master.gain.value = 0.75;
     master.connect(ctx.destination);
 
     // Ambient bus: lowpass for a soft wash, straight into the master.
@@ -86,7 +86,7 @@ function spawnChord(freqs, startAt) {
       osc.frequency.value = f;
       osc.detune.value = detune;
       const g = ctx.createGain();
-      const amp = 0.07 / Math.sqrt(freqs.length);
+      const amp = 0.11 / Math.sqrt(freqs.length);
       g.gain.setValueAtTime(0.0001, startAt);
       g.gain.exponentialRampToValueAtTime(amp, startAt + CROSSFADE_S);
       g.gain.setValueAtTime(amp, startAt + CHORD_S - 1);
@@ -101,7 +101,7 @@ function spawnChord(freqs, startAt) {
     hi.type = 'sine';
     hi.frequency.value = f * 2;
     const hg = ctx.createGain();
-    const hamp = 0.018 / Math.sqrt(freqs.length);
+    const hamp = 0.03 / Math.sqrt(freqs.length);
     hg.gain.setValueAtTime(0.0001, startAt);
     hg.gain.exponentialRampToValueAtTime(hamp, startAt + CROSSFADE_S);
     hg.gain.setValueAtTime(hamp, startAt + CHORD_S - 1);
@@ -144,7 +144,7 @@ function scheduleSparkle() {
         osc.frequency.value = base * Math.pow(2, semi / 12);
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.055, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.09, t + 0.02);
         g.gain.exponentialRampToValueAtTime(0.0001, t + 4.5);
         osc.connect(g).connect(ambientGain);
         osc.start(t);
@@ -257,7 +257,7 @@ function getApi() {
       }
       const t = ctx.currentTime;
       ambientGain.gain.cancelScheduledValues(t);
-      ambientGain.gain.setTargetAtTime(0.3, t, 1.2);
+      ambientGain.gain.setTargetAtTime(0.55, t, 1.2);
       startBreathing();
       if (!ambientLive) {
         ambientLive = true;

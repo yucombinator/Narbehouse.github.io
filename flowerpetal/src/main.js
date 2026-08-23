@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { initRender, resize } from './render.js';
-import { generateTrail } from './trail.js';
+import { generateTrail, CRUISE_SPEED } from './trail.js';
 import { advance } from './steer.js';
 import { collectBud, tintFor } from './growth.js';
 import { noteFor } from './notes.js';
 import { initAudio } from './audio.js';
 import { nextMeadow } from './meadow.js';
 import { loadSave, writeSave, resetSave } from './state.js';
+import { windAt } from './wind.js';
 
 const canvasWrap = document.getElementById('game');
 const canvas = document.createElement('canvas');
@@ -285,15 +286,19 @@ function bloomCheck() {
 
 function loop() {
   const dt = Math.min(clock.getDelta(), 1 / 20);
-  const m = advance(petal, dt, {}, input.left, input.right);
+  // Breeze: cruise speed breathes, the current nudges the petal sideways
+  // and bobs it, and the flower leans slightly into the air.
+  const wind = windAt(clock.elapsedTime, meadowSeed);
+  const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor }, input.left, input.right);
   const p = trail.pointAt(m.z);
-  petal = { ...m, y: p.y }; // carry altitude (advance returns x,z,bank only)
+  petal = { x: m.x + wind.swayVx * dt, z: m.z, y: p.y + wind.bobY, bank: m.bank };
   windAssist(dt);
   checkCollection();
   bloomCheck();
   render.setPetalSize(size);
   render.setPetalGlow((size - 1) / (MAX_SIZE - 1));
-  render.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank, clock.elapsedTime);
+  const windLean = Math.max(-0.3, Math.min(0.3, wind.swayVx * 0.3));
+  render.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank + windLean, clock.elapsedTime);
   render.renderer.render(render.scene, render.camera);
   requestAnimationFrame(loop);
 }

@@ -4,9 +4,13 @@ export const CRUISE_SPEED = 6;      // world units / second, constant
 export const MAX_BANK_DEG = 35;     // max bank angle, two-button steering
 export const G_EFF = 9.8;           // feel constant for the curvature budget
 export const MAX_CURVATURE = 0.09;  // |x''(z)| cap; hard invariant
-export const BUD_SPACING = 7;
-export const LATERAL_OFFSET = 0.35; // buds form a single gentle line on the spline
-export const ALT_AMPLITUDE = 2.5;   // max |y(z) - 6|
+export const CLUSTER_SPACING = 26;      // average z gap between bunches
+export const CLUSTER_SPACING_JITTER = 12; // random gap variation
+export const CLUSTER_RADIUS = 2.6;      // petals spread within this many units
+export const CLUSTER_MIN = 3;           // flowers per bunch
+export const CLUSTER_MAX = 6;
+export const ALT_AMPLITUDE = 2.5;       // max |y(z) - 6| path
+export const BUD_SPREAD = CLUSTER_RADIUS + 2.2; // corridor bound used by tests
 
 export const PALETTE = [
   0xffd1dc, 0xb3e1ff, 0xc7f0c7, 0xfff3b0, 0xdcc8ff, 0xffc9a8,
@@ -28,18 +32,17 @@ export function holdableCurvature(v = CRUISE_SPEED) {
   return (G_EFF * Math.tan((MAX_BANK_DEG * Math.PI) / 180)) / (v * v);
 }
 
-export function generateTrail({ seed, length = 400, budSpacing = BUD_SPACING }) {
+export function generateTrail({ seed, length = 400 }) {
 	const rand = mulberry32(seed);
 	const zStart = 40;                      // trail begins at the player
 	const zEnd = zStart - length;           // and runs toward -z (forward)
-  // A "line of flowers": keep the trail nearly straight. Very long
-  // wavelengths (period ~1500 units) and small amplitudes mean the whole
-  // meadow reads as one gentle row; curvature stays far below the
-  // holdable budget, so any wander is trivially followable.
+  // The path rolls gently like wind over a meadow: long-wavelength lateral
+  // sway (amplitudes a few units, periods ~200-600 units) — still far under
+  // the holdable curvature budget.
   const layers = 2;
-  const freqs = Array.from({ length: layers }, () => 0.003 + rand() * 0.005);
+  const freqs = Array.from({ length: layers }, () => 0.004 + rand() * 0.01);
   const phases = Array.from({ length: layers }, () => rand() * Math.PI * 2);
-  const amps = freqs.map((f, i) => (i === 0 ? 3 + rand() * 3 : 2 + rand() * 2));
+  const amps = freqs.map((f, i) => (i === 0 ? 4 + rand() * 4 : 2.5 + rand() * 2.5));
 
   // Altitude: gentle, independent low-frequency sines (defined before curveY uses them).
   const altFreqs = [0.02 + rand() * 0.02, 0.035 + rand() * 0.02];
@@ -51,17 +54,34 @@ export function generateTrail({ seed, length = 400, budSpacing = BUD_SPACING }) 
   const curveY = (z) =>
     6 + altAmp1 * Math.sin(altFreqs[0] * z + altPhases[0]) + altAmp2 * Math.sin(altFreqs[1] * z + altPhases[1]);
 
-  	const buds = [];
-	let side = 1;
-	for (let z = zStart - budSpacing; z >= zEnd + budSpacing; z -= budSpacing) {
-    buds.push({
-      x: curveX(z) + side * LATERAL_OFFSET,
-      y: curveY(z),
-      z,
-      colorHex: PALETTE[Math.floor(rand() * PALETTE.length)],
-    });
-    side = -side;
+  // Flowers gather in bunches: a cluster of 3-6 petals centred near the
+  // path, then a gap, then the next bunch. Organic little groups, not a
+  // straight line.
+  const buds = [];
+  let z = zStart - 8; // first bunch a short way ahead
+  let cluster = 0;
+  while (z > zEnd + 12) {
+    const n = CLUSTER_MIN + Math.floor(rand() * (CLUSTER_MAX - CLUSTER_MIN + 1));
+    const cx = curveX(z) + (rand() - 0.5) * 2.4;
+    const cz = z + (rand() - 0.5) * 3;
+    for (let i = 0; i < n; i++) {
+      const a = rand() * Math.PI * 2;
+      const r = Math.sqrt(rand()) * CLUSTER_RADIUS;
+      const bx = cx + Math.cos(a) * r;
+      const bz = cz + Math.sin(a) * r;
+      const by = curveY(bz) + (rand() - 0.5) * 1.6;
+      buds.push({
+        x: bx,
+        y: by,
+        z: bz,
+        colorHex: PALETTE[Math.floor(rand() * PALETTE.length)],
+        cluster,
+      });
+    }
+    z -= CLUSTER_SPACING + rand() * CLUSTER_SPACING_JITTER;
+    cluster++;
   }
+  buds.sort((a, b) => b.z - a.z); // descending z = toward the player's flight
   const mother = { x: curveX(zEnd), y: curveY(zEnd), z: zEnd };
 
   // Analytic worst-case second derivative (true upper bound).

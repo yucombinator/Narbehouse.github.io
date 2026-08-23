@@ -217,7 +217,8 @@ export function initRender(canvas) {
       // Organic swirl: the whole petal ring slowly circles.
       petalRing.rotation.z = timeSec * 0.5;
 
-      // Pulse remaining buds subtly; shrink collected ones out.
+      // Active buds gently pulse; collected ones shrink away and are then
+      // moved far below the world so they are truly gone from the scene.
       if (budMesh) {
         const dummy = new THREE.Object3D();
         for (let i = 0; i < budData.length; i++) {
@@ -227,15 +228,18 @@ export function initRender(canvas) {
           if (budTimes[i] !== null) {
             budTimes[i] += dt;
             if (budTimes[i] > 0.25) {
-              dummy.scale.setScalar(0);
+              dummy.position.set(b.x, -500, b.z); // pushed out of view = "removed"
+              dummy.scale.setScalar(0.001);
             } else {
               scale = 1 - budTimes[i] / 0.25;
+              dummy.position.set(b.x, b.y, b.z);
+              dummy.scale.setScalar(scale);
             }
           } else {
             scale = 1 + Math.sin(timeSec * 2.5 + i) * 0.06;
+            dummy.position.set(b.x, b.y, b.z);
+            dummy.scale.setScalar(scale);
           }
-          dummy.position.set(b.x, b.y, b.z);
-          dummy.scale.setScalar(scale);
           dummy.updateMatrix();
           budMesh.setMatrixAt(i, dummy.matrix);
         }
