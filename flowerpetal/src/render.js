@@ -7,18 +7,37 @@ import { windAt } from './wind.js';
 export const SKY_TOP = 0x9fd8ff;
 export const SKY_BOTTOM = 0xffe3f0;
 
+// A petal as a rounded teardrop: stretched blob, tapered toward the crown,
+// used in two layers so blooms read as organic petals instead of blobby
+// spheres. Higher segment counts for a smooth silhouette.
+function teardropPetal(len, wide, thin = 0.3) {
+  const g = new THREE.SphereGeometry(len, 14, 10);
+  g.scale(wide, wide * 0.62, thin);
+  g.rotateZ(0); // long axis along +x before being rotated per-petal
+  return g;
+}
+
 function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5, spread = 1.0 } = {}) {
   const parts = [];
-  const petalGeo = new THREE.SphereGeometry(petalRadius, 8, 6);
-  petalGeo.scale(1, 1, 0.28);
-  for (let i = 0; i < petals; i++) {
-    const a = (i / petals) * Math.PI * 2;
-    const g = petalGeo.clone();
-    g.rotateZ(a);
-    g.translate(Math.cos(a) * petalRadius * 1.15 * spread, Math.sin(a) * petalRadius * 1.15 * spread, 0);
-    parts.push(g);
+  // Two overlapping petal layers, each rotated by half a petal, so the bloom
+  // looks like real layered petals rather than a ball with bumps.
+  for (let layer = 0; layer < 2; layer++) {
+    for (let i = 0; i < petals; i++) {
+      const a = ((i + layer * 0.5) / petals) * Math.PI * 2;
+      const g = teardropPetal(petalRadius * 0.9, 0.5, 0.3);
+      g.rotateZ(a);
+      g.translate(
+        Math.cos(a) * petalRadius * 1.05 * spread,
+        Math.sin(a) * petalRadius * 1.05 * spread,
+        (layer === 0 ? 0 : -0.12) // back layer slightly higher
+      );
+      parts.push(g);
+    }
   }
-  parts.push(new THREE.SphereGeometry(centerRadius, 10, 8));
+  // Fuzzy center: a small, denser sphere with a crown bump.
+  const heart = new THREE.SphereGeometry(centerRadius, 12, 9);
+  heart.scale(1, 1, 0.9);
+  parts.push(heart);
   return mergeGeometries(parts);
 }
 
@@ -35,10 +54,22 @@ const STEM_MAT = new THREE.MeshStandardMaterial({ color: 0x3e8f3e, roughness: 0.
 const STEM_LEN = 2.2;
 const CROWN_LIFT = STEM_LEN + 0.25; // crown height above the terrain
 
-// Petal elongated along Z = the flight direction, so it streams nose-first
-// with the wind instead of lying sideways across the path.
-const PETAL_GEO = new THREE.SphereGeometry(0.26, 8, 6);
-PETAL_GEO.scale(0.3, 0.75, 1.6);
+// Player petal: an elongated, tapered blade along Z (flight direction) — a
+// wider rounded tip and narrower base, like a real flower petal rather than
+// a plain pill.
+const PETAL_GEO = new THREE.SphereGeometry(0.26, 14, 10);
+PETAL_GEO.scale(0.3, 0.62, 1.6);
+{
+  const pos = PETAL_GEO.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const z = pos.getZ(i) / 1.6; // -1..1 along the blade
+    // taper width toward the base (z = -1) and round the tip (z = +1)
+    const taper = 0.45 + 0.55 * Math.pow(0.5 + z * 0.5, 0.7);
+    pos.setX(i, pos.getX(i) * taper);
+    pos.setY(i, pos.getY(i) * (0.75 + 0.25 * Math.sin(Math.PI * Math.min(1, Math.max(0, (z + 1) / 2)))));
+  }
+  PETAL_GEO.computeVertexNormals();
+}
 export const MAX_PETALS = 8;
 const PETAL_RING_R = 0.3;
 
