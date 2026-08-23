@@ -483,6 +483,12 @@ export function initRender(canvas) {
         m.rotation.x = u.basePitch + windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
         m.rotation.y = u.baseYaw + Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
         m.rotation.z = u.baseRoll + Math.sin(timeSec * 0.9 + u.ph0) * 0.1;
+        // Store the petal's world position for the depth fade (computed after
+        // the camera moves this frame, at the bottom of frame()).
+        u.worldX = petalPos.x + pwx;
+        u.worldY = finalY;
+        u.worldZ = petalPos.z + pwz;
+        m.material.transparent = true;
       }
 
       // Grass: field centered on the petal in world space; each blade is
@@ -627,6 +633,23 @@ export function initRender(canvas) {
       );
       camera.position.lerp(target, 1 - Math.pow(0.0015, dt));
       camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30 - windIntensity * 10);
+
+      // Proximity fade: with the camera fresh, petals that drift close become
+      // partially transparent, graduating smoothly across the band.
+      const FADE_NEAR = 7;
+      const FADE_FAR = 14;
+      for (let i = 0; i < petalMeshes.length; i++) {
+        const m = petalMeshes[i];
+        const u = m.userData;
+        if (u.worldX === undefined) continue;
+        const camDist = Math.hypot(
+          camera.position.x - u.worldX,
+          camera.position.y - u.worldY,
+          camera.position.z - u.worldZ
+        );
+        const alpha = Math.min(1, Math.max(0, (camDist - FADE_NEAR) / (FADE_FAR - FADE_NEAR)));
+        m.material.opacity = 0.25 + 0.75 * alpha; // faint hint even at 0 distance
+      }
     },
   };
 
