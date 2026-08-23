@@ -10,11 +10,14 @@ let ctx = null;
 let master = null;
 let ambientGain = null;
 let ambientFilter = null;
+let analyser = null;
 let muted = false;
 let ambientEnabled = false;
 let ambientLive = false; // voices actually sounding right now
 let ambientTimers = [];
 let ambientVoices = new Set(); // { osc, g, stop }
+let chordArmed = false; // a chord chain is scheduled
+let sparkArmed = false; // a sparkle chain is scheduled
 let lfo = null;
 
 // Slow, spacey chord cycle (each entry: array of frequencies in Hz).
@@ -36,7 +39,7 @@ export function initAudio() {
   try {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain();
-    master.gain.value = 0.5;
+    master.gain.value = 0.6;
     master.connect(ctx.destination);
 
     // Ambient bus: lowpass for a soft wash, straight into the master.
@@ -44,9 +47,14 @@ export function initAudio() {
     ambientGain.gain.value = 0.0;
     ambientFilter = ctx.createBiquadFilter();
     ambientFilter.type = 'lowpass';
-    ambientFilter.frequency.value = 820;
+    ambientFilter.frequency.value = 1000;
     ambientFilter.Q.value = 0.4;
     ambientGain.connect(ambientFilter).connect(master);
+
+    // Analyser taps the master so we can prove sound is flowing.
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    master.connect(analyser);
   } catch (e) {
     ctx = null;
     return null;
@@ -54,23 +62,22 @@ export function initAudio() {
   return getApi();
 }
 
-// --- ambient engine ---------------------------------------------------
-
-function trimVoices() {
-  const now = ctx.currentTime;
-  for (const v of ambientVoices) {
-    if (v.stop < now) {
-      ambientVoices.delete(v);
-      try {
-        v.osc.disconnect();
-        v.g.disconnect();
-      } catch { /* already disconnected */ }
-    }
+function rmsDb() {
+  if (!analyser) return -Infinity;
+  const data = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = (data[i] - 128) / 128;
+    sum += v * v;
   }
+  const rms = Math.sqrt(sum / data.length);
+  return 20 * Math.log10(rms + 1e-9);
 }
 
+// --- ambient engine ---------------------------------------------------
+
 function spawnChord(freqs, startAt) {
-  const filter = ambientFilter;
   for (const f of freqs) {
     // Two detuned sine voices per pitch (gentle chorus).
     for (const detune of [-3.5, 3.5]) {
@@ -79,12 +86,12 @@ function spawnChord(freqs, startAt) {
       osc.frequency.value = f;
       osc.detune.value = detune;
       const g = ctx.createGain();
-      const amp = 0.05 / Math.sqrt(freqs.length);
+      const amp = 0.07 / Math.sqrt(freqs.length);
       g.gain.setValueAtTime(0.0001, startAt);
       g.gain.exponentialRampToValueAtTime(amp, startAt + CROSSFADE_S);
       g.gain.setValueAtTime(amp, startAt + CHORD_S - 1);
       g.gain.exponentialRampToValueAtTime(0.0001, startAt + CHORD_S + 1);
-      osc.connect(g).connect(filter);
+      osc.connect(g).connect(ambientFilter);
       osc.start(startAt);
       osc.stop(startAt + CHORD_S + 3);
       ambientVoices.add({ osc, g, stop: startAt + CHORD_S + 3 });
@@ -94,24 +101,30 @@ function spawnChord(freqs, startAt) {
     hi.type = 'sine';
     hi.frequency.value = f * 2;
     const hg = ctx.createGain();
-    const hamp = 0.012 / Math.sqrt(freqs.length);
+    const hamp = 0.018 / Math.sqrt(freqs.length);
     hg.gain.setValueAtTime(0.0001, startAt);
     hg.gain.exponentialRampToValueAtTime(hamp, startAt + CROSSFADE_S);
     hg.gain.setValueAtTime(hamp, startAt + CHORD_S - 1);
     hg.gain.exponentialRampToValueAtTime(0.0001, startAt + CHORD_S + 1);
-    hi.connect(hg).connect(filter);
+    hi.connect(hg).connect(ambientFilter);
     hi.start(startAt);
     hi.stop(startAt + CHORD_S + 3);
     ambientVoices.add({ osc: hi, g: hg, stop: startAt + CHORD_S + 3 });
   }
 }
 
-// Advance the chord cycle forever (while ambient is on).
+// Advance the chord cycle forever while ambient is live and unmuted.
 function scheduleChord(idx, startAt) {
   if (!ambientEnabled) return;
   spawnChord(AMBIENT_CHORDS[idx % AMBIENT_CHORDS.length], startAt);
   const next = ctx.currentTime + (CHORD_S - CROSSFADE_S);
-  const timer = setTimeout(() => scheduleChord(idx + 1, Math.max(ctx.currentTime + 0.3, next)), (CHORD_S - CROSSFADE_S) * 1000);
+  const timer = setTimeout(
+    () => {
+      if (!ambientEnabled || muted) return; // chain pauses while muted
+      scheduleChord(idx + 1, Math.max(ctx.currentTime + 0.3, next));
+    },
+    (CHORD_S - CROSSFADE_S) * 1000
+  );
   ambientTimers.push(timer);
 }
 
@@ -119,27 +132,29 @@ function scheduleChord(idx, startAt) {
 function scheduleSparkle() {
   if (!ambientEnabled) return;
   const delay = 2500 + Math.random() * 5000;
-  const timer = setTimeout(() => {
-    if (!ambientEnabled || !ctx) return;
-    if (ctx.state === 'suspended') ctx.resume();
-    const t = ctx.currentTime;
-    const base = SPARKLE_NOTES[Math.floor(Math.random() * SPARKLE_NOTES.length)];
-    const interval = Math.random() < 0.35 ? 7 : 0;
-    for (const semi of [0, interval]) {
-      const osc = ctx.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = base * Math.pow(2, semi / 12);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.04, t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 4.5);
-      osc.connect(g).connect(ambientGain);
-      osc.start(t);
-      osc.stop(t + 5);
-      ambientVoices.add({ osc, g, stop: t + 5.2 });
-    }
-    scheduleSparkle();
-  }, delay);
+  const timer = setTimeout(
+    () => {
+      if (!ambientEnabled || muted) return;
+      const t = ctx.currentTime;
+      const base = SPARKLE_NOTES[Math.floor(Math.random() * SPARKLE_NOTES.length)];
+      const interval = Math.random() < 0.35 ? 7 : 0;
+      for (const semi of [0, interval]) {
+        const osc = ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.value = base * Math.pow(2, semi / 12);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.055, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 4.5);
+        osc.connect(g).connect(ambientGain);
+        osc.start(t);
+        osc.stop(t + 5);
+        ambientVoices.add({ osc, g, stop: t + 5.2 });
+      }
+      scheduleSparkle();
+    },
+    delay
+  );
   ambientTimers.push(timer);
 }
 
@@ -148,7 +163,7 @@ function startBreathing() {
   lfo = ctx.createOscillator();
   lfo.frequency.value = 0.07; // ~14s cycle
   const lg = ctx.createGain();
-  lg.gain.value = 0.14;
+  lg.gain.value = 0.16;
   lfo.connect(lg).connect(ambientGain.gain);
   lfo.start();
 }
@@ -166,6 +181,8 @@ function stopBreathing() {
 function clearSchedules() {
   for (const t of ambientTimers) clearTimeout(t);
   ambientTimers = [];
+  chordArmed = false;
+  sparkArmed = false;
 }
 
 // Fade out every live ambient voice quickly.
@@ -173,13 +190,15 @@ function hushAmbient(sec = 0.4) {
   if (!ctx || !ambientGain) return;
   const t = ctx.currentTime;
   ambientGain.gain.cancelScheduledValues(t);
-  ambientGain.gain.setTargetAtTime(0.0, t, sec / 3);
+  ambientGain.gain.setTargetAtTime(0.0, t, Math.max(0.02, sec / 3));
   for (const v of ambientVoices) {
     try {
       v.g.gain.cancelScheduledValues(t);
-      v.g.gain.setTargetAtTime(0.0001, t, sec / 3);
+      v.g.gain.setTargetAtTime(0.0001, t, Math.max(0.02, sec / 3));
+      v.osc.stop(t + 0.5); // physically end the oscillator instead of letting it ring
     } catch { /* gone */ }
   }
+  ambientVoices.clear();
 }
 
 function getApi() {
@@ -217,24 +236,39 @@ function getApi() {
         osc.stop(t + 1.7);
       });
     },
-    // Start/stop the ambient pad. Call after a user gesture (autoplay policy).
+    // Start the pad. Call after a user gesture (autoplay policy).
     startAmbient() {
       if (!ctx || ambientEnabled) return;
       ambientEnabled = true;
       if (muted) return; // it will fade in when unmuted
       this.resumeAmbient();
     },
-    resumeAmbient() {
+    // Bring the pad up AFTER the context is definitely running. A suspended
+    // context has a frozen currentTime until resume() resolves; scheduling
+    // voices before that would misplace every timestamp.
+    async resumeAmbient() {
       if (!ctx || !ambientEnabled || muted) return;
-      if (ctx.state === 'suspended') ctx.resume();
+      try {
+        if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+          await ctx.resume();
+        }
+      } catch {
+        /* resume can reject; scheduling clamps to now anyway */
+      }
       const t = ctx.currentTime;
       ambientGain.gain.cancelScheduledValues(t);
-      ambientGain.gain.setTargetAtTime(0.22, t, 1.2);
+      ambientGain.gain.setTargetAtTime(0.3, t, 1.2);
       startBreathing();
       if (!ambientLive) {
         ambientLive = true;
-        spawnChord(AMBIENT_CHORDS[0], t + 0.4);
-        scheduleChord(1, t + (CHORD_S - CROSSFADE_S) + 0.4);
+        spawnChord(AMBIENT_CHORDS[0], t + 0.5);
+      }
+      if (!chordArmed) {
+        chordArmed = true;
+        scheduleChord(1, t + (CHORD_S - CROSSFADE_S) + 0.5);
+      }
+      if (!sparkArmed) {
+        sparkArmed = true;
         scheduleSparkle();
       }
     },
@@ -249,7 +283,8 @@ function getApi() {
       const was = muted;
       muted = m;
       if (m) {
-        hushAmbient(0.25);
+        clearSchedules(); // pause the chains; they re-arm on unmute
+        hushAmbient(0.3);
       } else if (was && ambientEnabled) {
         this.resumeAmbient();
       }
@@ -265,6 +300,7 @@ function getApi() {
         ambientLive,
         muted,
         running: !!ctx && ambientEnabled && ambientLive && !muted,
+        rmsDb: rmsDb(),
       };
     },
   };
