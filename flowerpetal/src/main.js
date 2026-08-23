@@ -387,12 +387,15 @@ function flightTargetY() {
 // Progressive centering: the further the player drifts from the trail's
 // centerline, the harder it pulls back — so reaching far out takes visibly
 // more effort, without a hard wall. Near the line it's a gentle guide.
-const CENTER_K = 0.3;    // pull factor at the origin (gentle)
-const CENTER_BIAS = 1.3; // how much the pull grows per unit of offset
-const CENTER_CAP = 6.5;  // max pull speed, u/s
-// The player can hold max-bank (sin(35°)*6 ≈ 3.44 u/s lateral) toward the
-// edge; with these values the pull meets steering around ~3-4 units out,
-// so straying beyond ~4 quickly costs real effort and ~7+ is hard to hold.
+// Give the player real freedom: the pull is weak near the line and only
+// grows slowly, so cruising off-center feels natural and holding wide
+// requires only modest extra effort — no visible wall until quite far out.
+const CENTER_K = 0.12;    // pull at origin (very gentle)
+const CENTER_BIAS = 0.5;  // pull growth per unit of offset
+const CENTER_CAP = 4.5;   // hard cap u/s
+// Pull reaches the max-bank rate (~3.44 u/s) only around ~7 units out, so
+// drifting to ~8-10 units is comfortable; beyond that it stiffens gradually
+// but never locks the player in.
 
 function elasticCenter(dt) {
   const centerX = trail.pointAt(petal.z).x;

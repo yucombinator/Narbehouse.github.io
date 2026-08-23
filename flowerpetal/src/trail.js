@@ -11,7 +11,7 @@ export const G_EFF = 9.8;           // feel constant for the curvature budget
 export const MAX_CURVATURE = 0.09;  // |x''(z)| cap; hard invariant
 export const CLUSTER_SPACING = 34;      // average z gap between bunches (fewer flowers)
 export const CLUSTER_SPACING_JITTER = 16; // random gap variation
-export const CLUSTER_RADIUS = 2.6;      // petals spread within this many units
+export const CLUSTER_RADIUS = 4.2;      // wider scatter — clusters aren't a line
 export const CLUSTER_MIN = 2;           // flowers per bunch (fewer)
 export const CLUSTER_MAX = 4;
 export const ALT_AMPLITUDE = 3.0;       // max |y(z) - HILL_OFFSET| flight path
@@ -62,8 +62,10 @@ export function generateTrail({ seed, length = 400 }) {
   let cluster = 0;
   while (z > zEnd + 12) {
     const n = CLUSTER_MIN + Math.floor(rand() * (CLUSTER_MAX - CLUSTER_MIN + 1));
-    const cx = curveX(z) + (rand() - 0.5) * 2.4;
-    const cz = z + (rand() - 0.5) * 3;
+    // Bigger lateral + depth scatter per bunch so flowers gather in clumps
+    // off the path, not a tidy row along it.
+    const cx = curveX(z) + (rand() - 0.5) * 7;
+    const cz = z + (rand() - 0.5) * 6;
     for (let i = 0; i < n; i++) {
       const a = rand() * Math.PI * 2;
       const r = Math.sqrt(rand()) * CLUSTER_RADIUS;
