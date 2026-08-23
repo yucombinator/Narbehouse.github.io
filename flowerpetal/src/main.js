@@ -384,16 +384,23 @@ function flightTargetY() {
   return base;
 }
 
-// Weak elastic centering: over time the petal is pulled gently back toward
-// the trail's centerline, like a soft rubber band. Steering still wins — the
-// force is small and slowly corrects wandering.
-const CENTER_STIFFNESS = 0.35; // fraction of the error per second
-const CENTER_MAX_PULL = 1.1;   // u/s cap so it never yanks
+// Progressive centering: the further the player drifts from the trail's
+// centerline, the harder it pulls back — so reaching far out takes visibly
+// more effort, without a hard wall. Near the line it's a gentle guide.
+const CENTER_K = 0.3;    // pull factor at the origin (gentle)
+const CENTER_BIAS = 1.3; // how much the pull grows per unit of offset
+const CENTER_CAP = 6.5;  // max pull speed, u/s
+// The player can hold max-bank (sin(35°)*6 ≈ 3.44 u/s lateral) toward the
+// edge; with these values the pull meets steering around ~3-4 units out,
+// so straying beyond ~4 quickly costs real effort and ~7+ is hard to hold.
 
 function elasticCenter(dt) {
   const centerX = trail.pointAt(petal.z).x;
   const err = centerX - petal.x;
-  const pull = Math.max(-CENTER_MAX_PULL, Math.min(CENTER_MAX_PULL, err * CENTER_STIFFNESS));
+  // Pull rate grows with offset: near the line it's gentle, far out it's
+  // strong. Clamped so it always feels physical, never snaps.
+  const pullMag = CENTER_K + CENTER_BIAS * Math.min(14, Math.abs(err));
+  const pull = Math.max(-CENTER_CAP, Math.min(CENTER_CAP, err * pullMag));
   petal.x += pull * dt;
 }
 
