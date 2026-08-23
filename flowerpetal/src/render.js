@@ -67,14 +67,71 @@ export function initRender(canvas) {
   const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
   scene.add(sky);
 
-  // Ground: huge soft disc slightly below the trail valley.
+  // Rolling green hills (Bliss-style): a big plane whose vertices are raised
+  // by layered sine ridges and tinted with a green gradient so it reads as
+  // countryside, not a flat disc.
   const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(400, 48),
-    new THREE.MeshStandardMaterial({ color: 0xb9e6a0, roughness: 1 })
+    new THREE.PlaneGeometry(900, 900, 96, 96),
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true })
   );
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -3;
-  scene.add(ground);
+  {
+    const gpos = ground.geometry.attributes.position;
+    const hillA = 3.2 + Math.random() * 2.0;
+    const hillB = 1.8 + Math.random() * 1.4;
+    const hillColors = [];
+    const cHigh = new THREE.Color(0x7ec850);
+    const cLow = new THREE.Color(0x9ee06a);
+    for (let i = 0; i < gpos.count; i++) {
+      const x = gpos.getX(i);
+      const y = gpos.getY(i); // plane local y = world z after rotation
+      // Layered rolling bumps.
+      const h =
+        hillA * Math.sin(x * 0.012 + 0.6) * Math.sin(y * 0.02 + 1.1) +
+        hillB * Math.sin(x * 0.03 + 2.2) * Math.sin(y * 0.037 + 0.3);
+      gpos.setZ(i, h);
+      // Slightly green-tinted by height: valleys darker, peaks brighter.
+      const t = THREE.MathUtils.clamp((h + 5) / 10, 0, 1);
+      const c = cLow.clone().lerp(cHigh, t);
+      hillColors.push(c.r, c.g, c.b);
+    }
+    ground.geometry.setAttribute('color', new THREE.Float32BufferAttribute(hillColors, 3));
+    ground.geometry.computeVertexNormals();
+    ground.geometry.attributes.position.needsUpdate = true;
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -6;
+    scene.add(ground);
+  }
+
+  // Grass field: instanced blades whose tops bend as the player flies near.
+  // CPU-driven sway (no shaders): each blade's tip leans by an amount that
+  // falls off with distance from the petal and breathes with time.
+  const GRASS_N = 900;
+  const GRASS_R = 46; // band of grass around the player
+  const grassGeo = new THREE.PlaneGeometry(0.12, 1.1, 1, 3);
+  grassGeo.translate(0, 0.55, 0); // pivot at the base
+  const grassMat = new THREE.MeshBasicMaterial({
+    color: 0x6fbf4a,
+    side: THREE.DoubleSide,
+  });
+  const grass = new THREE.InstancedMesh(grassGeo, grassMat, GRASS_N);
+  grass.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const gDummy = new THREE.Object3D();
+  const grassSeeds = [];
+  // Pre-scatter blades in a disc around origin; the whole field follows the
+  // camera each frame so the player is always surrounded by grass.
+  for (let i = 0; i < GRASS_N; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * GRASS_R;
+    const gw = Math.random() * Math.PI * 2;
+    grassSeeds.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, s: 0.7 + Math.random() * 0.9, ph: Math.random() * Math.PI * 2, sway: 0.25 + Math.random() * 0.5 });
+    gDummy.position.set(grassSeeds[i].x, 0.0, grassSeeds[i].z);
+    gDummy.scale.set(1, grassSeeds[i].s, 1);
+    gDummy.rotation.y = gw;
+    gDummy.updateMatrix();
+    grass.setMatrixAt(i, gDummy.matrix);
+  }
+  grass.instanceMatrix.needsUpdate = true;
+  scene.add(grass);
 
   // --- Player: a ring of petals that grows as flowers are collected -----
   // `petal` is the world group (position, bank roll, size). `petalRing`
@@ -280,14 +337,27 @@ export function initRender(canvas) {
       }
 
       // Sky dome, ground, and clouds travel with the camera so the world
-      // visibly scrolls forward as the petal flies down the trail.
+      // visibly scrolls forward as the petal flies down the path.
       sky.position.copy(camera.position);
-      ground.position.set(0, -3, camera.position.z);
-      for (const c of clouds) {
-        c.position.x += c.userData.speed * dt;
-        if (c.position.x > 140) c.position.x = -140;
-        c.position.z = camera.position.z + c.userData.zo;
+      ground.position.set(0, -6, camera.position.z);
+      // Grass follows the player; blades near the petal bend harder.
+      const swayBase = Math.sin(timeSec * 1.4) * 0.18;
+      for (let i = 0; i < GRASS_N; i++) {
+        const seed = grassSeeds[i];
+        const dx = seed.x + camera.position.x - petalPos.x;
+        const dz = seed.z + camera.position.z - petalPos.z;
+        const dist = Math.hypot(dx, dz);
+        // Falloff: strongly agitated within ~6 units, calm beyond 18.
+        const proximity = Math.max(0, 1 - dist / 18);
+        const bend = proximity * proximity * (seed.sway * (0.5 + 0.5 * Math.sin(timeSec * 2.2 + seed.ph)));
+        gDummy.position.set(seed.x + camera.position.x, 0, seed.z + camera.position.z);
+        gDummy.rotation.y = Math.atan2(dx, dz);
+        gDummy.rotation.z = (swayBase + bend) * -Math.sign(dx || 0.001);
+        gDummy.scale.set(1, seed.s, 1);
+        gDummy.updateMatrix();
+        grass.setMatrixAt(i, gDummy.matrix);
       }
+      grass.instanceMatrix.needsUpdate = true;
 
       // Camera trails behind (larger z) and above the petal, looking ahead (-z).
       const target = new THREE.Vector3(petalPos.x * 0.6, petalPos.y * 0.55 + 4.2, petalPos.z + 11);
