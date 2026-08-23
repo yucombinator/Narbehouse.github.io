@@ -340,11 +340,6 @@ function updateHud() {
       `<span class="hudTag">Meadow ${Math.min(stageIndex + 1, TOTAL_STAGES)} of ${TOTAL_STAGES}</span>` +
       `<span class="hudDots" role="img" aria-label="flowers gathered: ${run.stopsDone} of ${TOTAL_STOPS}" title="flowers gathered: ${run.stopsDone} of ${TOTAL_STOPS}">${dots}</span>`;
   }
-  const ring = document.getElementById('sizeRingFg');
-  if (ring) {
-    const p = meadowTotal ? meadowBuds / meadowTotal : 0;
-    ring.style.strokeDashoffset = String(113.1 * (1 - p));
-  }
 }
 
 function checkCollection() {

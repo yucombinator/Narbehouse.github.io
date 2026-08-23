@@ -1,10 +1,12 @@
 // Pure flower roster + seeded choice sampling for meadow stops.
 //
-// Design: four simple flower SHAPES (daisy, cup, bell, puff), each in a few
-// colourways = 15 variants. Five stops × three offers = fifteen, so a run
-// shows every variant exactly once — never a repeat. Similar flowers grow
-// together on the ground: each flight segment carries one variant's colour
-// mood (see segmentMood).
+// Design: four simple flower SHAPES (daisy, cup, bell, puff), each in
+// several colourways = 25 variants (15 wildflower classics + 10 garden
+// favourites). Five stops × three offers sample from the shuffled roster,
+// so every run shows fifteen distinct variants — never a repeat within a
+// run, with fresh combinations each run. Similar flowers grow together on
+// the ground: each flight segment carries one variant's colour mood (see
+// segmentMood).
 //
 // No three.js, DOM, or WebAudio.
 
@@ -63,6 +65,38 @@ export const ROSTER = [
   { id: 'white-clover', name: 'White Clover', tts: 'White clover',
     shape: 'puff', petalHex: '#f6f6ee', centerHex: '#e0e0d2',
     fact: 'Sweet little lawns of white' },
+
+  // --- Recognizable garden classics ---------------------------------------
+  { id: 'rose', name: 'Rose', tts: 'Rose',
+    shape: 'cup', petalHex: '#d94f6f', centerHex: '#b23a55',
+    fact: 'The classic spiral of layered petals' },
+  { id: 'marigold', name: 'Marigold', tts: 'Marigold',
+    shape: 'puff', petalHex: '#f5a623', centerHex: '#c8781a',
+    fact: 'Golden ruffles gardens love' },
+  { id: 'jasmine', name: 'Jasmine', tts: 'Jasmine',
+    shape: 'daisy', petalHex: '#fafafa', centerHex: '#f2e18c',
+    fact: 'Tiny stars with a night perfume' },
+  { id: 'lavender', name: 'Lavender', tts: 'Lavender',
+    shape: 'bell', petalHex: '#b39ddb', centerHex: '#8f76c2',
+    fact: 'Purple spikes bees hum around' },
+  { id: 'daffodil', name: 'Daffodil', tts: 'Daffodil',
+    shape: 'cup', petalHex: '#ffce30', centerHex: '#f59d1e',
+    fact: 'Wears a golden trumpet' },
+  { id: 'peony', name: 'Peony', tts: 'Peony',
+    shape: 'puff', petalHex: '#f7a8c0', centerHex: '#e88aa8',
+    fact: 'A soft blush ball of petals' },
+  { id: 'chrysanthemum', name: 'Chrysanthemum', tts: 'Chrysanthemum',
+    shape: 'puff', petalHex: '#eda04f', centerHex: '#b96a2a',
+    fact: 'Autumn\u2019s many-petalled crown' },
+  { id: 'lotus', name: 'Lotus', tts: 'Lotus',
+    shape: 'cup', petalHex: '#f2b8cf', centerHex: '#e8d44f',
+    fact: 'Blooms above still water' },
+  { id: 'lantana', name: 'Lantana', tts: 'Lantana',
+    shape: 'puff', petalHex: '#ef7f4e', centerHex: '#e8b93c',
+    fact: 'One cluster, sunset colors mixed' },
+  { id: 'orchid', name: 'Orchid', tts: 'Orchid',
+    shape: 'bell', petalHex: '#c86fd4', centerHex: '#9a4fae',
+    fact: 'An elegant, exotic bloom' },
 ];
 
 export function flowerById(id) {

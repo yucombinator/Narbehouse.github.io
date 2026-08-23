@@ -12,9 +12,9 @@ import {
 
 const SHAPES = new Set(['daisy', 'cup', 'bell', 'puff']);
 
-test('roster is exactly 4 shapes x colorways and covers a 5-stop run', () => {
-  assert.equal(ROSTER.length, 15, `expected 15 variants, have ${ROSTER.length}`);
-  assert.equal(maxStopsCovered(), 5, 'roster must cover exactly five stops');
+test('roster covers a 5-stop run with room for variety', () => {
+  assert.equal(ROSTER.length, 25, `expected 25 variants, have ${ROSTER.length}`);
+  assert.ok(maxStopsCovered() >= 5, 'roster must cover five stops');
 });
 
 test('every flower has complete data incl. shape + colours', () => {
