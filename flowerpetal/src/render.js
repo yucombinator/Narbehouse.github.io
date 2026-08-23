@@ -423,9 +423,16 @@ export function initRender(canvas) {
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
       // Wind intensity eases toward the steering input.
       	      windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 1.1));
-      // Trail: record the recent path; petals stream behind like a comet.
-      trailHistory.unshift({ x: petalPos.x, y: petalPos.y, z: petalPos.z });
-      if (trailHistory.length > MAX_PETALS + 2) trailHistory.pop();
+      // Trail: record the recent path, spaced ~2.5 units apart so slots
+      // stretch a real distance behind the player (not every frame collapsed
+      // at one point).
+      {
+        const last = trailHistory[0];
+        if (!last || Math.hypot(last.x - petalPos.x, last.z - petalPos.z) > 2.5) {
+          trailHistory.unshift({ x: petalPos.x, y: petalPos.y, z: petalPos.z });
+          if (trailHistory.length > 24) trailHistory.pop();
+        }
+      }
       const wind = windAt(timeSec, 11);
       const windBias = Math.max(-1, Math.min(1, wind.swayVx));
       for (let i = 0; i < petalMeshes.length; i++) {
@@ -438,10 +445,10 @@ export function initRender(canvas) {
           const k = Math.min(1, age / 1.0);
           ease = k * k * (3 - 2 * k);
         }
-        // Slot: petals chase the path point `i+1` steps back, with per-petal
-        // lateral drift so they trail in a loose ribbon, not a single line.
-        u.orbit += dt * u.dir * u.speed * 0.3; // slow personal wander
-        const slot = trailHistory[Math.min(i + 1, trailHistory.length - 1)] || petalPos;
+                // Slot: petal i chases the path point i+2 steps back (with per-petal
+        // spacing) so the ribbon genuinely lags behind instead of stacking.
+        // The lerp toward the slot preserves upstream spacing.
+        const slot = trailHistory[Math.min(i + 2, trailHistory.length - 1)] || petalPos;
         const lat = Math.sin(u.ph0 + timeSec * 0.6) * 0.7;
         const lat2 = Math.cos(u.ph0 * 2 + timeSec * 0.8) * 0.5;
         const px = slot.x + lat + windBias * 0.7;
