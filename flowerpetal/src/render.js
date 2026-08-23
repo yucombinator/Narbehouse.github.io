@@ -605,25 +605,38 @@ export function initRender(canvas) {
         c.position.z = camera.position.z + c.userData.zo;
       }
 
-      // Wind streak particles: a ring of light streamers around the player
-      // that brighten and stretch when steering (windIntensity).
+      // Wind streaks follow the direction of travel: when idle they stream
+      // forward from the petals toward the camera (the camera trails behind
+      // the flight path); when turning, the camera follows the curve, so the
+      // streak axis bends with the turn.
       if (streakMat) {
+        const dirX = camera.position.x - petalPos.x;
+        const dirZ = camera.position.z - petalPos.z;
+        const len = Math.hypot(dirX, dirZ) || 1;
+        const ex = dirX / len;
+        const ez = dirZ / len;
         const sDummy = new THREE.Object3D();
         for (let i = 0; i < STREAK_N; i++) {
           const s = streakSeeds[i];
-          const angle = s.ang + timeSec * s.spin;
-          const rr = s.r * (1 + windIntensity * 0.5);
-          sDummy.position.set(
-            petalPos.x + Math.cos(angle) * rr,
-            petalPos.y + Math.sin(angle) * rr * 0.4 + s.yoff,
-            petalPos.z + Math.sin(angle * 1.3) * 2 * windIntensity
-          );
-          sDummy.scale.set(1, 1 + windIntensity * 2.2, 1 + windIntensity * 1.6);
+          // Each streak sits along the travel axis at a jittered depth,
+          // offset laterally so they form a loose bundle of wind lines.
+          const depth = s.r * (1 + windIntensity * 0.7); // along the axis
+          const latX = Math.sin(s.ang + timeSec * s.spin) * 1.1;
+          const latY = Math.cos(s.ang * 1.3 + timeSec * s.spin) * 0.9 + s.yoff;
+          // Point position: petal + axis*lateral component, then a world z
+          // that keeps them between petal and camera (wind from petals → cam).
+          const pxw = petalPos.x + ex * depth + latX * (1 - ez * 0);
+          const pzw = petalPos.z + ez * depth;
+          sDummy.position.set(pxw, petalPos.y + latY, pzw);
+          // Orient the long dimension along the travel axis and stretch with wind.
+          sDummy.rotation.y = Math.atan2(ex, ez > 0 ? ez : 0.0001) * -1;
+          sDummy.rotation.z = Math.sin(s.ang * 2 + timeSec * 0.8) * 0.12;
+          sDummy.scale.set(1, 1 + windIntensity * 1.8, 1 + windIntensity * 2.4);
           sDummy.updateMatrix();
           streakMesh.setMatrixAt(i, sDummy.matrix);
         }
         streakMesh.instanceMatrix.needsUpdate = true;
-        streakMat.opacity = 0.12 + windIntensity * 0.5;
+        streakMat.opacity = 0.15 + windIntensity * 0.55;
       }
 
       // Camera trails behind (larger z) and above the petal, looking ahead.
