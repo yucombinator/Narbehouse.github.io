@@ -67,12 +67,36 @@ export function initRender(canvas) {
   let budData = []; // {x,y,z,colorHex}
   let budTimes = []; // seconds since collected (null = active)
   const pops = []; // {x,y,z,life} collection bursts
+  // Ring pool for collection pops (fixed small pool, no per-collect allocation).
+  const ringPool = [];
+  for (let i = 0; i < 10; i++) {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.5, 0.85, 28),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide })
+    );
+    ring.visible = false;
+    scene.add(ring);
+    ringPool.push(ring);
+  }
+  let ringCursor = 0;
 
   // Mother bloom: single larger pulsing sphere at trail end.
   const motherMat = new THREE.MeshBasicMaterial({ color: 0xff9ecb, transparent: true, opacity: 0.95 });
   const mother = new THREE.Mesh(new THREE.SphereGeometry(1.4, 20, 14), motherMat);
   mother.visible = false;
   scene.add(mother);
+
+  // Drifting cloud puffs (cheap billboard-ish spheres).
+  const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+  const clouds = [];
+  for (let i = 0; i < 10; i++) {
+    const c = new THREE.Mesh(new THREE.SphereGeometry(9 + Math.random() * 12, 10, 8), cloudMat);
+    c.position.set((Math.random() - 0.5) * 220, 24 + Math.random() * 26, (Math.random() - 0.5) * 180);
+    c.scale.y = 0.35;
+    c.userData.speed = 0.4 + Math.random() * 0.7;
+    scene.add(c);
+    clouds.push(c);
+  }
 
   const api = {
     scene,
@@ -89,7 +113,14 @@ export function initRender(canvas) {
     collectPop(index) {
       const b = budData[index];
       if (!b) return;
-      pops.push({ x: b.x, y: b.y, z: b.z, life: 0 });
+      const ring = ringPool[ringCursor];
+      ringCursor = (ringCursor + 1) % ringPool.length;
+      ring.visible = true;
+      ring.position.set(b.x, b.y, b.z);
+      ring.lookAt(camera.position);
+      ring.scale.setScalar(1);
+      ring.material.opacity = 0.9;
+      pops.push({ x: b.x, y: b.y, z: b.z, life: 0, ring });
       budTimes[index] = 0;
     },
     setPetalSize(s) {
@@ -132,10 +163,17 @@ export function initRender(canvas) {
         if (budMesh.instanceColor) budMesh.instanceColor.needsUpdate = true;
       }
 
-      // Pops.
+      // Pops: expand and fade each pop's own ring.
       for (let i = pops.length - 1; i >= 0; i--) {
-        pops[i].life += dt;
-        if (pops[i].life > 0.5) pops.splice(i, 1);
+        const pop = pops[i];
+        pop.life += dt;
+        const k = Math.min(1, pop.life / 0.5);
+        pop.ring.scale.setScalar(1 + k * 6);
+        pop.ring.material.opacity = 0.9 * (1 - k);
+        if (pop.life > 0.5) {
+          pop.ring.visible = false;
+          pops.splice(i, 1);
+        }
       }
 
       // Mother bloom gentle pulse.
@@ -143,6 +181,12 @@ export function initRender(canvas) {
         const m = 1 + Math.sin(timeSec * 1.8) * 0.08;
         mother.scale.setScalar(m);
         mother.rotation.y += dt * 0.4;
+      }
+
+      // Drift clouds slowly; wrap around the player.
+      for (const c of clouds) {
+        c.position.x += c.userData.speed * dt;
+        if (c.position.x > 140) c.position.x = -140;
       }
 
       // Camera trails behind and above the petal.
