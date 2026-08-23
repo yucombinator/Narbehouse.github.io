@@ -8,6 +8,7 @@ import { initAudio } from './audio.js';
 import { nextMeadow } from './meadow.js';
 import { loadSave, writeSave, resetSave } from './state.js';
 import { windAt } from './wind.js';
+import { HILLS } from './hill.js';
 
 const canvasWrap = document.getElementById('game');
 const canvas = document.createElement('canvas');
@@ -113,7 +114,7 @@ const BLOOM_REACH = 5; // distance to mother bloom that ends a meadow
 
 let meadowSeed = 42;
 let trail = generateTrail({ seed: meadowSeed });
-let petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0 };
+let petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0, y: trail.pointAt(trail.zStart).y };
 let meadowBuds = 0;
 let meadowTotal = trail.buds.length;
 let size = 1;
@@ -284,14 +285,39 @@ function bloomCheck() {
   updateHud();
 }
 
+const FLOAT_ALT = 3.2; // cruise height above terrain when no flowers to catch
+function flightTargetY() {
+  // We follow the terrain at FLOAT_ALT, but dip down toward an uncollected
+  // flower when one is close ahead — "float up when there's nothing to catch".
+  const base = HILLS.height(petal.x, petal.z) + FLOAT_ALT;
+  let nearestY = null;
+  let nearestD = Infinity;
+  for (let i = 0; i < trail.buds.length; i++) {
+    if (collectedSet.has(i)) continue;
+    const b = trail.buds[i];
+    if (b.z > petal.z + 6 || b.z < petal.z - 26) continue; // ahead window
+    const d = Math.hypot(b.x - petal.x, b.z - petal.z);
+    if (d < nearestD) {
+      nearestD = d;
+      nearestY = b.y;
+    }
+  }
+  if (nearestY !== null && nearestD < 20) {
+    const mix = 1 - nearestD / 20; // dip harder the closer the flower
+    return base - mix * (base - nearestY);
+  }
+  return base;
+}
+
 function loop() {
   const dt = Math.min(clock.getDelta(), 1 / 20);
-  // Breeze: cruise speed breathes, the current nudges the petal sideways
-  // and bobs it, and the flower leans slightly into the air.
   const wind = windAt(clock.elapsedTime, meadowSeed);
   const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor }, input.left, input.right);
   const p = trail.pointAt(m.z);
-  petal = { x: m.x + wind.swayVx * dt, z: m.z, y: p.y + wind.bobY, bank: m.bank };
+  const targetY = flightTargetY();
+  // Ease altitude toward the target for a smooth guided float.
+  const y = petal.y + (targetY - petal.y) * Math.min(1, dt * 2.2) + wind.bobY * dt;
+  petal = { x: m.x + wind.swayVx * dt, z: m.z, y, bank: m.bank };
   windAssist(dt);
   checkCollection();
   bloomCheck();
@@ -302,6 +328,7 @@ function loop() {
   render.renderer.render(render.scene, render.camera);
   requestAnimationFrame(loop);
 }
+requestAnimationFrame(loop);
 
 // --- Title / reset flow ------------------------------------------------
 const titleEl = document.getElementById('title');

@@ -1,16 +1,22 @@
-// Pure random trail generation. No three.js, DOM, or WebAudio — unit-tested with node --test.
+// Pure random trail generation. No three.js, DOM, or WebAudio — unit-tested.
+import { mulberry32 } from './rand.js';
+import { HILLS } from './hill.js';
+
+// Re-export for tests and callers that import the PRNG from here.
+export { mulberry32 };
 
 export const CRUISE_SPEED = 6;      // world units / second, constant
 export const MAX_BANK_DEG = 35;     // max bank angle, two-button steering
 export const G_EFF = 9.8;           // feel constant for the curvature budget
 export const MAX_CURVATURE = 0.09;  // |x''(z)| cap; hard invariant
-export const CLUSTER_SPACING = 26;      // average z gap between bunches
-export const CLUSTER_SPACING_JITTER = 12; // random gap variation
+export const CLUSTER_SPACING = 34;      // average z gap between bunches (fewer flowers)
+export const CLUSTER_SPACING_JITTER = 16; // random gap variation
 export const CLUSTER_RADIUS = 2.6;      // petals spread within this many units
-export const CLUSTER_MIN = 3;           // flowers per bunch
-export const CLUSTER_MAX = 6;
-export const ALT_AMPLITUDE = 2.5;       // max |y(z) - 6| path
-export const BUD_SPREAD = CLUSTER_RADIUS + 2.2; // corridor bound used by tests
+export const CLUSTER_MIN = 2;           // flowers per bunch (fewer)
+export const CLUSTER_MAX = 4;
+export const ALT_AMPLITUDE = 3.0;       // max |y(z) - HILL_OFFSET| flight path
+export const BUD_SPREAD = CLUSTER_RADIUS + 2.2; // corridor spread used by tests
+export const FLY_ALT = 3.2;             // how high above the ground the petal cruises
 
 export const PALETTE = [
   0xffd1dc, 0xb3e1ff, 0xc7f0c7, 0xfff3b0, 0xdcc8ff, 0xffc9a8,
@@ -24,17 +30,6 @@ export const FLOWER_KINDS = [
   { petals: 4, spread: 0.95, bigCenter: 0.22 }, // star
   { petals: 8, spread: 1.35, bigCenter: 0.2 },  // airy cluster
 ];
-
-export function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 // Worst-case |x''| a max-bank turn can follow: a_lat / v^2, a_lat = g*tan(bank).
 export function holdableCurvature(v = CRUISE_SPEED) {
@@ -53,17 +48,11 @@ export function generateTrail({ seed, length = 400 }) {
   const phases = Array.from({ length: layers }, () => rand() * Math.PI * 2);
   const amps = freqs.map((f, i) => (i === 0 ? 4 + rand() * 4 : 2.5 + rand() * 2.5));
 
-  // Altitude: gentle, independent low-frequency sines (defined before curveY uses them).
-  const altFreqs = [0.02 + rand() * 0.02, 0.035 + rand() * 0.02];
-  const altPhases = [rand() * Math.PI * 2, rand() * Math.PI * 2];
-  // Guided vertical flight: the path climbs and dips so the player is
-  // "flying in the air", not hovering at one height. Amplitudes a few units.
-  const altAmp1 = 2.0 + rand() * 1.6;
-  const altAmp2 = 1.0 + rand() * 1.2;
-
+  // The flight path hovers ~FLY_ALT above the terrain: the petal follows the
+  // hills' undulations (ground level) plus a float altitude, so it dips into
+  // valleys with them and rises over ridges.
   const curveX = (z) => amps.reduce((s, a, i) => s + a * Math.sin(freqs[i] * z + phases[i]), 0);
-  const curveY = (z) =>
-    6 + altAmp1 * Math.sin(altFreqs[0] * z + altPhases[0]) + altAmp2 * Math.sin(altFreqs[1] * z + altPhases[1]);
+  const curveY = (z) => HILLS.height(curveX(z), z) + FLY_ALT;
 
   // Flowers gather in bunches: a cluster of 3-6 petals centred near the
   // path, then a gap, then the next bunch. Organic little groups, not a
@@ -80,11 +69,13 @@ export function generateTrail({ seed, length = 400 }) {
       const r = Math.sqrt(rand()) * CLUSTER_RADIUS;
       const bx = cx + Math.cos(a) * r;
       const bz = cz + Math.sin(a) * r;
-      const by = curveY(bz) + (rand() - 0.5) * 1.6;
+      const by = HILLS.height(bx, bz) + 0.5;
       const kind = Math.floor(rand() * FLOWER_KINDS.length);
+      // Flowers grow ON the ground, not in mid-air.
+      const gy = HILLS.height(bx, bz) + 0.5;
       buds.push({
         x: bx,
-        y: by,
+        y: gy,
         z: bz,
         colorHex: PALETTE[Math.floor(rand() * PALETTE.length)],
         kind,
@@ -101,7 +92,7 @@ export function generateTrail({ seed, length = 400 }) {
   for (const b of buds) {
     b.kindIndex = kindCounts[b.kind]++;
   }
-  const mother = { x: curveX(zEnd), y: curveY(zEnd), z: zEnd };
+  const mother = { x: curveX(zEnd), y: HILLS.height(curveX(zEnd), zEnd) + 1.2, z: zEnd };
 
   // Analytic worst-case second derivative (true upper bound).
   const curvatureBound = amps.reduce((s, a, i) => s + a * freqs[i] * freqs[i], 0);
