@@ -60,16 +60,17 @@ const FLOWER_FRAGMENT_SHADER = `
     vec3 baseColor = mix(vInstanceColor * vColor, pollenColor * vColor, vCenter);
 
     // Organic botanical lighting (harmonious with grass):
-    float nDotL = max(0.0, dot(vNormal, sunDir));
+    // Wrapped diffuse keeps shaded sides airy so pastels never go muddy.
+    float nDotL = max(0.0, dot(vNormal, sunDir) * 0.5 + 0.5);
 
     // Translucent Subsurface Scattering (sunlight filtering through petal membranes)
     float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * (0.55 * (1.0 - vCenter * 0.45));
 
-    // Hemispheric sky fill
-    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.42 + 0.32 * max(0.0, vNormal.y));
+    // Hemispheric sky fill (bright floor = happy pastel read)
+    vec3 skyLight = vec3(0.78, 0.90, 1.0) * (0.58 + 0.28 * max(0.0, vNormal.y));
 
     // Sun light with warm golden tone
-    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.75 + sss);
+    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.48 + sss);
 
     // Soft velvety rim sheen (Fresnel)
     float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.8) * 0.32;
@@ -94,9 +95,16 @@ const STEM_VERTEX_SHADER = `
   varying vec3 vWorldPos;
   varying vec3 vNormal;
   varying vec3 vColor;
+  varying float vY;
+  varying vec3 vTint;
 
   void main() {
     vColor = color;
+    vY = position.y; // 0 at the root, 1 at the crown (geometry pre-translated)
+    vTint = vec3(0.0);
+    #ifdef USE_INSTANCING_COLOR
+      vTint = instanceColor; // the bud's own flower colour, set per instance
+    #endif
 
     vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
     vWorldPos = worldPos.xyz;
@@ -120,18 +128,24 @@ const STEM_FRAGMENT_SHADER = `
   varying vec3 vWorldPos;
   varying vec3 vNormal;
   varying vec3 vColor;
+  varying float vY;
+  varying vec3 vTint;
 
   void main() {
     vec3 viewDir = normalize(uCameraPos - vWorldPos);
     vec3 sunDir = normalize(uSunDir);
 
-    vec3 baseColor = vColor;
+    // Blend a whisper of the flower's own colour into the top third of the
+    // stem — each stem quietly belongs to its bloom.
+    float crownMix = smoothstep(0.55, 1.0, vY) * 0.35;
+    vec3 baseColor = mix(vColor, vTint, crownMix);
 
-    float nDotL = max(0.0, dot(vNormal, sunDir));
+    // Wrapped diffuse + bright sky floor: airy green, never black.
+    float nDotL = max(0.0, dot(vNormal, sunDir) * 0.5 + 0.5);
     float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * 0.38;
 
-    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.42 + 0.30 * max(0.0, vNormal.y));
-    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.75 + sss);
+    vec3 skyLight = vec3(0.78, 0.90, 1.0) * (0.58 + 0.28 * max(0.0, vNormal.y));
+    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.5 + sss);
 
     vec3 finalColor = baseColor * (skyLight + sunLight);
 
@@ -253,19 +267,20 @@ const PETAL_FRAGMENT_SHADER = `
 
     vec3 baseColor = uColor * vColor;
 
-    float nDotL = max(0.0, dot(vNormal, sunDir));
+    // Wrapped diffuse keeps shaded sides airy so pastels never go muddy.
+    float nDotL = max(0.0, dot(vNormal, sunDir) * 0.5 + 0.5);
 
     // Translucent Subsurface Scattering (golden backlighting through petal)
     float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * 0.65;
 
-    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.45 + 0.30 * max(0.0, vNormal.y));
-    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.75 + sss);
+    vec3 skyLight = vec3(0.78, 0.90, 1.0) * (0.58 + 0.28 * max(0.0, vNormal.y));
+    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.48 + sss);
 
     // Velvet rim sheen (Fresnel)
     float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.6) * 0.45;
 
-    // Emissive glow (ramps up on collection/size growth)
-    vec3 emissive = uColor * (0.10 + uGlow * 0.30);
+    // Constant pastel floor + emissive glow ramp on collection
+    vec3 emissive = uColor * 0.16 + uColor * (0.10 + uGlow * 0.30);
 
     vec3 finalColor = baseColor * (skyLight + sunLight) + emissive + vec3(1.0, 0.96, 0.90) * fresnel;
 
@@ -293,7 +308,7 @@ function teardropPetal(len, wide, thin = 0.3) {
     const x = pos.getX(i);
     const span = Math.max(0.01, len * wide * 2);
     const t = THREE.MathUtils.clamp((x + len * wide) / span, 0, 1);
-    const bright = 0.72 + t * 0.38;
+    const bright = 0.82 + t * 0.28;
     colors[i * 3] = bright;
     colors[i * 3 + 1] = bright * 0.98;
     colors[i * 3 + 2] = bright * 0.95;
@@ -351,8 +366,10 @@ STEM_GEO.translate(0, 0.5, 0);
 {
   const spos = STEM_GEO.attributes.position;
   const scol = new Float32Array(spos.count * 3);
-  const root = new THREE.Color(0x1a3810);
-  const top = new THREE.Color(0x428224);
+  // Fresh yellow-green: darker where the stem meets its shadow in the grass,
+  // brightening toward the crown so stems never read as black sticks.
+  const root = new THREE.Color(0x4a722f);
+  const top = new THREE.Color(0xa9cf6d);
   for (let i = 0; i < spos.count; i++) {
     const y = spos.getY(i);
     const c = root.clone().lerp(top, THREE.MathUtils.clamp(y, 0, 1));
@@ -380,7 +397,7 @@ PETAL_GEO.scale(0.3, 0.62, 1.6);
     pos.setX(i, pos.getX(i) * taper);
     pos.setY(i, pos.getY(i) * (0.75 + 0.25 * Math.sin(Math.PI * Math.min(1, Math.max(0, (z + 1) / 2)))));
     const t = THREE.MathUtils.clamp((z + 1) / 2, 0, 1);
-    const bright = 0.68 + t * 0.36;
+    const bright = 0.85 + t * 0.22;
     pcol[i * 3] = bright;
     pcol[i * 3 + 1] = bright;
     pcol[i * 3 + 2] = bright;
@@ -696,10 +713,20 @@ export function initRender(canvas) {
   // Add ONE new petal (ease-in) without disturbing the existing swarm.
   // Existing petals keep their orbits/poses; only the next one appears small
   // at the centre and grows into place — no full-swarm reset on pickup.
-  function spawnPetalMesh() {
+  function spawnPetalMesh(from = null) {
     const color = petalColors[petalColors.length - 1] ?? 0xff9ec0;
     const mat = createPetalMaterial(color);
     const m = new THREE.Mesh(petalGeometry, mat);
+    // Optional world-space origin (the flower just picked): convert to
+    // wreath-local so the petal can fly in from its flower.
+    let flyFrom = null;
+    if (from && Number.isFinite(from.x)) {
+      flyFrom = {
+        x: from.x - petal.position.x,
+        y: from.y - petal.position.y,
+        z: from.z - petal.position.z,
+      };
+    }
     m.userData = {
       orbit: Math.random() * Math.PI * 2,
       dir: Math.random() < 0.5 ? -1 : 1,
@@ -715,9 +742,11 @@ export function initRender(canvas) {
       baseYaw: (Math.random() - 0.5) * 2.6,
       basePitch: (Math.random() - 0.5) * 0.9,
       baseRoll: (Math.random() - 0.5) * 1.1,
+      flyFrom, // {x,y,z} local — set while the join-flight is in progress
+      flyT0: nowSec,
     };
     m.scale.setScalar(0.2); // start small at the centre
-    m.position.set(0, 0, 0);
+    m.position.set(flyFrom ? flyFrom.x : 0, flyFrom ? flyFrom.y : 0, flyFrom ? flyFrom.z : 0);
     petalRing.add(m);
     petalMeshes.push(m);
     petalMats.push(mat);
@@ -805,14 +834,43 @@ export function initRender(canvas) {
   const ringPool = [];
   for (let i = 0; i < 10; i++) {
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.5, 0.85, 28),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide })
+      new THREE.RingGeometry(0.3, 0.48, 28),
+      new THREE.MeshBasicMaterial({ color: 0xfff4e0, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false })
     );
     ring.visible = false;
     scene.add(ring);
     ringPool.push(ring);
   }
   let ringCursor = 0;
+
+  // Stop beacons: a faint vertical glow column marking each meadow stop so
+  // it reads from far away without shouting. Kept deliberately subtle —
+  // additive blending, low opacity, slow breathing pulse.
+  let stopMarkers = [];
+  let stopGlowTexture = null;
+  function makeStopGlowTexture() {
+    if (stopGlowTexture) return stopGlowTexture;
+    const cv = document.createElement('canvas');
+    cv.width = 64; cv.height = 128;
+    const ctx = cv.getContext('2d');
+    const g = ctx.createLinearGradient(0, 128, 0, 0);
+    g.addColorStop(0, 'rgba(255,255,255,0.8)');
+    g.addColorStop(0.3, 'rgba(255,255,255,0.28)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 128);
+    ctx.globalCompositeOperation = 'destination-out';
+    const side = ctx.createLinearGradient(0, 0, 64, 0);
+    side.addColorStop(0, 'rgba(0,0,0,1)');
+    side.addColorStop(0.32, 'rgba(0,0,0,0)');
+    side.addColorStop(0.68, 'rgba(0,0,0,0)');
+    side.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.fillStyle = side;
+    ctx.fillRect(0, 0, 64, 128);
+    stopGlowTexture = new THREE.CanvasTexture(cv);
+    stopGlowTexture.colorSpace = THREE.SRGBColorSpace;
+    return stopGlowTexture;
+  }
 
   const mother = new THREE.Mesh(MOTHER_FLOWER, motherMat);
   mother.visible = false;
@@ -821,15 +879,50 @@ export function initRender(canvas) {
   mother.castShadow = true;
   scene.add(mother);
 
-  // Clouds.
+  // Clouds: fluffy cumulus built from vertex-shaded puffs. Colors are baked
+  // into the geometry (white tops, soft blue-grey bellies) with an unlit
+  // material, so scene lights can never tint them green or pink. They sit
+  // high and AHEAD of the flight path — you see part of a cloud, naturally.
   const clouds = [];
-  const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
-  for (let i = 0; i < 10; i++) {
-    const c = new THREE.Mesh(new THREE.SphereGeometry(9 + Math.random() * 12, 10, 8), cloudMat);
-    c.scale.y = 0.35;
-    c.userData.speed = 0.4 + Math.random() * 0.7;
-    c.userData.zo = (Math.random() - 0.5) * 160;
-    c.position.set((Math.random() - 0.5) * 220, 24 + Math.random() * 26, c.userData.zo);
+  const puffGeo = new THREE.SphereGeometry(1, 14, 11);
+  {
+    const pos = puffGeo.attributes.position;
+    const col = new Float32Array(pos.count * 3);
+    const top = new THREE.Color(0xffffff);
+    const bottom = new THREE.Color(0xd7deeb);
+    for (let i = 0; i < pos.count; i++) {
+      const t = THREE.MathUtils.clamp((pos.getY(i) + 1) / 2, 0, 1);
+      const c = bottom.clone().lerp(top, Math.pow(t, 0.8));
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    puffGeo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  }
+  const puffMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95 });
+  function makeCumulus() {
+    const g = new THREE.Group();
+    const n = 7 + Math.floor(Math.random() * 4);
+    let x = 0;
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const r = 4.4 + Math.random() * 2.6 - Math.abs(t - 0.5) * 3.4; // tallest mid-cloud
+      const puff = new THREE.Mesh(puffGeo, puffMat);
+      puff.position.set(x, r * 0.24 + Math.random() * r * 0.42, (Math.random() - 0.5) * r * 0.9);
+      puff.scale.set(r, r * (0.6 + Math.random() * 0.18), r * 0.85);
+      g.add(puff);
+      x += r * 0.82;
+    }
+    const box = new THREE.Box3().setFromObject(g);
+    const cx = (box.min.x + box.max.x) / 2;
+    for (const p of g.children) p.position.x -= cx;
+    return g;
+  }
+  for (let i = 0; i < 9; i++) {
+    const c = makeCumulus();
+    c.scale.setScalar(1.8 + Math.random() * 1.8);
+    c.userData.speed = 0.35 + Math.random() * 0.65;
+    // Fixed slots in a band ahead: mostly above and in front of the POV.
+    c.userData.zo = -40 - Math.random() * 220;
+    c.position.set((Math.random() - 0.5) * 340, 46 + Math.random() * 40, c.userData.zo);
     scene.add(c);
     clouds.push(c);
   }
@@ -887,14 +980,14 @@ export function initRender(canvas) {
       ring.position.set(b.x, b.y, b.z);
       ring.lookAt(camera.position);
       ring.scale.setScalar(1);
-      ring.material.opacity = 0.9;
+      ring.material.opacity = 0.28;
       pops.push({ x: b.x, y: b.y, z: b.z, life: 0, ring });
       budTimes[index] = 0;
     },
     setPetalSize(s) {
       petal.scale.setScalar(s);
     },
-    addPetal(hex) {
+    addPetal(hex, from = null) {
       if (petalColors.length >= MAX_PETALS) {
         // At the cap: drop the oldest petal, keep the rest, add the newest.
         const oldest = petalMeshes.shift();
@@ -905,7 +998,7 @@ export function initRender(canvas) {
       }
       petalColors.push(hex);
       curPetalColor = hex; // glow the grass beneath with the newest petal colour
-      spawnPetalMesh(); // only the new petal animates — the swarm stays put
+      spawnPetalMesh(from); // only the new petal animates — the swarm stays put
     },
     setPetalCount(n) {
       const cur = petalColors[petalColors.length - 1] ?? 0xff9ec6;
@@ -932,8 +1025,38 @@ export function initRender(canvas) {
     resetTrail() {
       trailHistory.length = 0;
     },
+    setStopMarkers(points) {
+      for (const s of stopMarkers) {
+        scene.remove(s);
+        s.material.dispose();
+      }
+      stopMarkers = [];
+      if (!points) return;
+      const tex = makeStopGlowTexture();
+      points.forEach((p, i) => {
+        const mat = new THREE.SpriteMaterial({
+          map: tex,
+          color: p.color ?? 0xfff1d6,
+          transparent: true,
+          opacity: 0.14,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          fog: false
+        });
+        const s = new THREE.Sprite(mat);
+        s.position.set(p.x, p.y + 5, p.z);
+        s.scale.set(3.2, 11, 1);
+        s.userData.phase = i * 1.7;
+        scene.add(s);
+        stopMarkers.push(s);
+      });
+    },
     frame(dt, petalPos, bank, timeSec, steerLevel = 0) {
-      nowSec = timeSec; // keep the acquisition clock current
+      nowSec = timeSec;
+      // Beacon breathing: barely-there pulse so the column feels alive.
+      for (const s of stopMarkers) {
+        s.material.opacity = 0.1 + 0.06 * (0.5 + 0.5 * Math.sin(timeSec * 1.3 + s.userData.phase));
+      } // keep the acquisition clock current
       petal.position.set(petalPos.x, petalPos.y, petalPos.z);
       petal.rotation.z = bank * 0.6;
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
@@ -979,6 +1102,42 @@ export function initRender(canvas) {
           px = Math.cos(u.orbit + timeSec * 0.8) * spiral + windBias * 0.8;
           py = Math.sin(u.orbit * 1.7 + timeSec * 0.7) * 0.3 + Math.cos(u.ph0 + timeSec * 0.5) * 0.3;
           pz = lag;
+        }
+        // Fresh pickup: the new petal FLIES IN from the flower it came from.
+        // Slow and lazy — it detaches, floats across on the breeze with a
+        // soft arc, and settles into its slot. No speed, no spin: nothing
+        // that could read as sharp or hurried.
+        let flying = false;
+        let flyE = 1;
+        if (u.flyFrom) {
+          const fk = Math.min(1, (timeSec - u.flyT0) / 1.6);
+          if (fk < 1) {
+            flying = true;
+            flyE = 1 - Math.pow(1 - fk, 3); // decelerate gently into place
+            const arc = Math.sin(fk * Math.PI) * 0.5;
+            const sway = Math.sin(fk * Math.PI * 2) * 0.12; // drifting, not darting
+            px = lerp(u.flyFrom.x, px, flyE) + sway;
+            py = lerp(u.flyFrom.y, py, flyE) + arc;
+            pz = lerp(u.flyFrom.z, pz, flyE);
+          } else {
+            delete u.flyFrom; // landed — normal orbit behaviour takes over
+          }
+        }
+        if (flying) {
+          // Direct placement along the flight path (no lag-lerp), growing in
+          // softly and tilting as it settles onto the wreath.
+          const wx = petalPos.x + px;
+          const wz = petalPos.z + pz;
+          const fy = HILLS.height(wx, wz) + 0.45;
+          m.position.set(px, Math.max(fy, py), pz);
+          m.scale.setScalar(lerp(0.3, 1, flyE));
+          m.rotation.x = u.basePitch + Math.sin(flyE * Math.PI) * 0.35;
+          m.rotation.y = u.baseYaw + Math.sin(timeSec * 1.2 + u.ph0) * 0.12;
+          m.rotation.z = u.baseRoll + Math.sin(flyE * Math.PI) * 0.4;
+          u.worldX = wx;
+          u.worldY = m.position.y;
+          u.worldZ = wz;
+          continue;
         }
         const targetY = lerp(m.position.y, py, Math.min(1, dt * 4) * ease);
         // Never clip the ground: petals hold at least half a petal above the
@@ -1074,14 +1233,14 @@ export function initRender(canvas) {
         for (const m of stemMeshes) m.instanceMatrix.needsUpdate = true;
       }
 
-      // Pops.
+      // Pops: a whisper of a ring — just enough to confirm the pickup.
       for (let i = pops.length - 1; i >= 0; i--) {
         const pop = pops[i];
         pop.life += dt;
-        const k = Math.min(1, pop.life / 0.5);
-        pop.ring.scale.setScalar(1 + k * 6);
-        pop.ring.material.opacity = 0.9 * (1 - k);
-        if (pop.life > 0.5) {
+        const k = Math.min(1, pop.life / 0.42);
+        pop.ring.scale.setScalar(1 + k * 2.1);
+        pop.ring.material.opacity = 0.28 * (1 - k) * (1 - k);
+        if (pop.life > 0.42) {
           pop.ring.visible = false;
           pops.splice(i, 1);
         }
@@ -1103,7 +1262,7 @@ export function initRender(canvas) {
       sky.position.copy(camera.position);
       for (const c of clouds) {
         c.position.x += c.userData.speed * dt;
-        if (c.position.x > 140) c.position.x = -140;
+        if (c.position.x > 190) c.position.x = -190;
         c.position.z = camera.position.z + c.userData.zo;
       }
 
@@ -1228,7 +1387,11 @@ export function initRender(canvas) {
         sd.scale.set(1, STEM_LEN, 1);
         sd.updateMatrix();
         stems.setMatrixAt(local, sd.matrix);
+        // Per-instance flower colour: the shader tints the stem's top with
+        // its own bloom so stem and crown read as one plant.
+        stems.setColorAt(local, new THREE.Color(buds[idx].colorHex));
       });
+      if (stems.instanceColor) stems.instanceColor.needsUpdate = true;
       scene.add(stems);
       stemMeshes[k] = stems;
     });

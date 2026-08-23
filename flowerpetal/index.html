@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Petal Bloom</title>
+<title>Bloom</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #ffd9ec; font-family: system-ui, sans-serif; }
   #game { position: fixed; inset: 0; }
@@ -61,8 +61,157 @@
 	  #credits.show { display: flex; }
 	  #credits h2 { font-size: 34px; margin: 0; }
 	  .credit-list { list-style: none; margin: 0; padding: 0; font-size: 19px; line-height: 1.7; }
-	  .credit-list a { color: #3a6ea5; font-weight: 600; }
-	  .credit-status { font-size: 15px; opacity: 0.75; }
+ 	  .credit-list a { color: #3a6ea5; font-weight: 600; }
+ 	  .credit-status { font-size: 15px; opacity: 0.75; }
+
+  /* Pause menu (hold Return during play) */
+  #pause {
+    position: fixed; inset: 0; z-index: 22; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(90, 42, 74, 0.45);
+  }
+  #pause.show { display: flex; }
+  #pauseInner {
+    background: rgba(255, 244, 250, 0.96);
+    border-radius: 26px; padding: 30px 38px;
+    box-shadow: 0 12px 40px rgba(90, 42, 74, 0.35);
+    text-align: center; min-width: min(84vw, 430px);
+  }
+  #pausePrompt { color: #5a2a4a; font-size: 34px; margin: 0 0 16px; }
+  .pauseItem {
+    display: block; width: 100%; cursor: pointer;
+    font-size: 26px; font-weight: 700; color: #5a2a4a;
+    background: #fff; border: 4px solid rgba(90, 42, 74, 0.25);
+    border-radius: 16px; padding: 13px 18px; margin: 10px 0;
+  }
+  .pauseItem.scanFocused {
+    border-color: #ff5ca0; background: #fff0f6;
+    box-shadow: 0 0 14px rgba(255, 92, 160, 0.45);
+  }
+
+  /* Meadow-stop chooser */
+  #stop {
+    position: fixed; inset: 0; z-index: 18; display: none;
+    flex-direction: column; align-items: center; justify-content: flex-end;
+    padding-bottom: 7vh; pointer-events: none;
+  }
+  #stop.show { display: flex; }
+  #stopInner {
+    pointer-events: auto;
+    background: rgba(255, 244, 250, 0.94);
+    border-radius: 26px; padding: 26px 34px;
+    box-shadow: 0 12px 40px rgba(90,42,74,0.35);
+    text-align: center; max-width: min(92vw, 860px);
+  }
+  #stopPrompt { color: #5a2a4a; font-size: 30px; margin: 0 0 18px; }
+  #stopCards { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; }
+  .flowerCard {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    width: 190px; min-height: 210px; cursor: pointer;
+    background: #fff; border: 5px solid rgba(90,42,74,0.25); border-radius: 20px;
+    padding: 16px 10px; font-size: 21px; font-weight: 700; color: #5a2a4a;
+  }
+  .flowerCard svg { width: 96px; height: 96px; }
+  .flowerCard.focused {
+    border-color: #ff5ca0;
+    box-shadow: 0 0 0 6px #ffd1e6, 0 8px 26px rgba(255,92,160,0.45);
+    transform: scale(1.05);
+  }
+  .flowerCard:focus-visible { outline: none; }
+
+  /* Basket HUD (right edge): shaded wicker, blooms pop in */
+  #basket {
+    position: fixed; right: 14px; top: 50%;
+    transform: translateY(-50%) rotate(-3deg);
+    z-index: 6; pointer-events: none;
+    filter: drop-shadow(0 8px 16px rgba(90, 58, 28, 0.28));
+  }
+  @keyframes bloomPop {
+    0% { transform: scale(0.2) translateY(-26px); opacity: 0; }
+    65% { transform: scale(1.16) translateY(2px); opacity: 1; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
+  }
+  #basket .bloom-pop {
+    animation: bloomPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    transform-box: fill-box; transform-origin: center bottom;
+  }
+
+  /* HUD: meadow tag + flower glyphs showing gathered stops */
+  .hudDots { display: inline-flex; gap: 6px; margin-left: 18px; vertical-align: middle; }
+  .hudFlower { width: 21px; height: 21px; vertical-align: middle; filter: drop-shadow(0 1px 2px rgba(90,42,74,0.25)); }
+  .hudTag { font-size: 23px; font-weight: 800; color: #5a2a4a; vertical-align: middle; }
+
+  /* Postcard deal-in (direction of travel through the interlude scan) */
+  @keyframes cardInR {
+    from { transform: translateX(52px) rotate(-1.6deg) scale(0.965); opacity: 0; }
+  }
+  @keyframes cardInL {
+    from { transform: translateX(-52px) rotate(-1.6deg) scale(0.965); opacity: 0; }
+  }
+  #postcard.postcard-in-r { animation: cardInR 0.34s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  #postcard.postcard-in-l { animation: cardInL 0.34s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%) translateY(8px);
+    z-index: 30; background: rgba(90,42,74,0.88); color: #fff;
+    font-size: 22px; font-weight: 700; border-radius: 16px; padding: 12px 26px;
+    opacity: 0; transition: opacity 0.25s ease, transform 0.25s ease;
+    pointer-events: none; text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Interlude: postcard album + scan actions */
+  #ceremony {
+    position: fixed; inset: 0; z-index: 28; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: rgba(255, 231, 243, 0.94); padding: 20px;
+  }
+  #ceremony.show { display: flex; }
+  #interludePos {
+    margin: 0; font-size: 26px; font-weight: 800; color: #5a2a4a;
+    letter-spacing: 0.5px;
+  }
+  .scanFocused {
+    border-color: #ff5ca0 !important;
+    box-shadow: 0 0 0 6px #ffd1e6, 0 8px 26px rgba(255, 92, 160, 0.45) !important;
+    transform: scale(1.05);
+  }
+  #postcard {
+    position: relative; text-align: center; color: #5a2a4a;
+    background:
+      radial-gradient(circle at 18% 12%, rgba(255,255,255,0.7), transparent 42%),
+      #fdf6ec;
+    border: 3px double #c9a97e; border-radius: 14px;
+    padding: 22px 34px 18px; max-width: 580px; width: min(92vw, 580px);
+    box-shadow: 0 20px 55px rgba(90, 42, 74, 0.35);
+    transform: rotate(-1.2deg);
+  }
+  #cerTitle {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 38px; margin: 0 96px 4px 0; color: #5a2a4a;
+  }
+  #stampBox {
+    position: absolute; top: 14px; right: 16px; transform: rotate(2.5deg);
+    filter: drop-shadow(1px 2px 2px rgba(90, 60, 30, 0.28));
+  }
+  #postMark { position: absolute; top: 4px; right: 78px; width: 116px; opacity: 0.85; pointer-events: none; }
+  #bouquetArt { display: flex; justify-content: center; margin: 0 0 2px; }
+  #poemLines .poemLine {
+    font-family: Georgia, 'Times New Roman', serif; font-style: italic;
+    font-size: 25px; line-height: 1.5; color: #5a2a4a;
+  }
+  #postSub {
+    margin: 10px 0 2px; font-size: 15px; font-weight: 700;
+    letter-spacing: 3px; text-transform: uppercase; color: #8a6238;
+  }
+  @media (max-width: 640px) {
+    #cerTitle { font-size: 30px; margin-right: 70px; }
+    #stampBox svg { width: 58px; height: 68px; }
+    #postMark { right: 60px; width: 92px; }
+    #poemLines .poemLine { font-size: 21px; }
+    #basket { transform: translateY(-50%) rotate(-3deg) scale(0.78); }
+  }
 </style>
 <script type="importmap">
 {
@@ -85,15 +234,19 @@
 </div>
 
 <div id="title">
-  <h1>🌸 Petal Bloom</h1>
-  <p>Hold <strong>LEFT</strong> or <strong>RIGHT</strong> to steer.<br>
-     Follow the glowing trail. Collect the buds. Grow big. Forever.</p>
+  <h1>🌸 Bloom</h1>
+  <p>Drift with the wind.<br>
+     Stop and smell the roses.<br>
+     Fill your basket with wildflowers.</p>
   	  <div class="btnrow">
 	    <button id="btnStart" class="bigbtn grow" type="button">Start</button>
 	    <button id="btnReset" class="bigbtn" type="button">Reset progress</button>
 	  </div>
 	  	  <label class="ambient-toggle" for="ambientOn">
 	    <input type="checkbox" id="ambientOn" checked> Ambient music <span class="keyhint">(M)</span>
+	  </label>
+	  <label class="ambient-toggle" for="ttsOn">
+	    <input type="checkbox" id="ttsOn" checked> Speak flower names
 	  </label>
 	  <button id="btnCredits" class="bigbtn" type="button">Credits &amp; models</button>
 	</div>
@@ -117,6 +270,57 @@
 	  </div>
 	</div>
 
-<script type="module" src="./src/main.js?v=17"></script>
+<!-- Pause: hold Return during play; scan the menu like everywhere else -->
+<div id="pause" role="dialog" aria-modal="true" aria-labelledby="pausePrompt">
+  <div id="pauseInner">
+    <h2 id="pausePrompt">Paused</h2>
+    <div id="pauseItems"></div>
+    <p class="tinyhint">The highlight moves on its own — Space steps it, Enter chooses. Escape resumes.</p>
+  </div>
+</div>
+
+<div id="basket" aria-hidden="true"></div>
+<div id="toast" role="status"></div>
+
+<!-- Meadow stop: world pauses, three flowers are offered, highlight auto-cycles -->
+<div id="stop" role="dialog" aria-modal="true" aria-labelledby="stopPrompt">
+  <div id="stopInner">
+    <h2 id="stopPrompt">Meadow stop</h2>
+    <div id="stopCards"></div>
+    <p class="tinyhint">The highlight moves on its own — press Enter to pick. Space moves it ahead.</p>
+  </div>
+</div>
+
+<!-- Interlude: scan the postcards earned this session, then fly on or rest -->
+<div id="ceremony" role="dialog" aria-modal="true" aria-labelledby="interludePos">
+  <p id="interludePos">Postcard 1 of 1</p>
+  <div id="postcard">
+    <h2 id="cerTitle">Meadow No.</h2>
+    <div id="postMark" aria-hidden="true">
+      <svg viewBox="0 0 120 70">
+        <defs>
+          <path id="pmArc" d="M60,34 a26,26 0 1,1 52,0 a26,26 0 1,1 -52,0"/>
+        </defs>
+        <circle cx="86" cy="34" r="27" fill="none" stroke="#b98a52" stroke-width="2"/>
+        <circle cx="86" cy="34" r="21.5" fill="none" stroke="#b98a52" stroke-width="1"/>
+        <path d="M4,30 H58 M9,38 H54 M16,46 H50" stroke="#b98a52" stroke-width="1.6" opacity="0.7"/>
+        <text font-family="Georgia, serif" font-size="8.6" letter-spacing="2.2" fill="#a3773f">
+          <textPath href="#pmArc">MEADOW POST · PETAL BLOOM ·</textPath>
+        </text>
+      </svg>
+    </div>
+    <div id="stampBox"></div>
+    <div id="bouquetArt"></div>
+    <div id="poemLines"></div>
+    <p id="postSub"></p>
+  </div>
+  <div class="btnrow">
+    <button id="btnFlyOn" class="bigbtn" type="button">Fly on</button>
+    <button id="btnRest" class="bigbtn" type="button">Rest here</button>
+  </div>
+  <p class="tinyhint">The highlight wanders on its own — Space steps it, Enter chooses.</p>
+</div>
+
+<script type="module" src="./src/main.js?v=19"></script>
 </body>
 </html>
