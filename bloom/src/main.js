@@ -897,6 +897,16 @@ function restartStage() {
 }
 
 function exitGame() {
+  // Embedded in the hub: hand focus back to its Back button (shared
+  // convention, see developer-guide) instead of trying to close the tab.
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ action: 'focusBackButton' }, '*');
+      closePause();
+      toTitle();
+      return;
+    }
+  } catch { /* cross-origin parent — fall through to standalone behavior */ }
   window.close(); // usually blocked for non-script-opened tabs
   setTimeout(() => {
     toast('Close this tab to leave the meadow.');
