@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { initRender, resize } from './render.js';
 import { generateTrail } from './trail.js';
 import { advance } from './steer.js';
+import { collectBud, tintFor } from './growth.js';
+import { noteFor } from './notes.js';
+import { initAudio } from './audio.js';
 
 const canvasWrap = document.getElementById('game');
 const canvas = document.createElement('canvas');
@@ -16,6 +19,24 @@ try {
 }
 window.addEventListener('resize', () => resize(render));
 window.__petal = { render };
+window.addEventListener('error', (e) => {
+  window.__lastError = (e.error && e.error.stack) || e.message;
+});
+window.addEventListener('unhandledrejection', (e) => {
+  window.__lastError = 'REJECTION: ' + (e.reason && e.reason.stack) || String(e.reason);
+});
+// Debug/test hook: teleport the petal and read game state (used by smoke tests).
+window.__petalGame = {
+  teleport(x, z) {
+    petal = { x, z, bank: 0, y: trail.pointAt(z).y };
+  },
+  	state() {
+		return { size, meadowBuds, meadowTotal, collected: collectedSet.size };
+	},
+	bud(i) {
+		return trail.buds[i] ? { x: trail.buds[i].x, y: trail.buds[i].y, z: trail.buds[i].z } : null;
+	},
+};
 
 // --- Input: two buttons, LEFT and RIGHT -------------------------------
 const input = { left: false, right: false };
@@ -78,14 +99,61 @@ for (const [id, key, label] of [['btnL', 'left', '◀ LEFT'], ['btnR', 'right', 
 // --- Game state --------------------------------------------------------
 const trail = generateTrail({ seed: 42 });
 let petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0 };
+let meadowBuds = 0;
+let meadowTotal = trail.buds.length;
+let size = 1;
 const clock = new THREE.Clock();
+render.setTrail(trail.buds, trail.mother);
+const audio = initAudio();
+
+const COLLECT_RADIUS = 0.8; // base horizontal collect distance
+const MAX_SIZE = 2.5;
+
+function checkCollection() {
+  const best = { i: -1, d: Infinity };
+  for (let i = 0; i < trail.buds.length; i++) {
+    const b = trail.buds[i];
+    if (collectedSet.has(i)) continue;
+    const d = Math.hypot(b.x - petal.x, b.z - petal.z);
+    if (d < best.d) {
+      best.i = i;
+      best.d = d;
+    }
+  }
+  if (best.i >= 0 && best.d < COLLECT_RADIUS + size * 0.5) {
+    const st = collectBud({ size, meadowBuds, meadowTotal });
+    size = st.size;
+    meadowBuds = st.meadowBuds;
+    collectedSet.add(best.i);
+    render.collectPop(best.i);
+    if (audio) audio.chime(noteFor(collectedLifetimeTotal++));
+    updateHud();
+  }
+}
+
+function updateHud() {
+	const hud = document.getElementById('hudCount');
+	if (hud) hud.textContent = `${meadowBuds} / ${meadowTotal}`;
+	const ring = document.getElementById('sizeRingFg');
+	if (ring) {
+		const p = meadowTotal ? meadowBuds / meadowTotal : 0;
+		ring.style.strokeDashoffset = String(113.1 * (1 - p));
+	}
+}
+
+let collectedSet = new Set();
+let collectedLifetimeTotal = 0;
 
 function loop() {
-  const dt = Math.min(clock.getDelta(), 1 / 20);
-  petal = advance(petal, dt, {}, input.left, input.right);
-  const p = trail.pointAt(petal.z);
-  render.frame(dt, { x: petal.x, y: p.y }, petal.bank);
-  render.renderer.render(render.scene, render.camera);
-  requestAnimationFrame(loop);
+	const dt = Math.min(clock.getDelta(), 1 / 20);
+	const m = advance(petal, dt, {}, input.left, input.right);
+	const p = trail.pointAt(m.z);
+	petal = { ...m, y: p.y }; // carry altitude (advance returns x,z,bank only)
+	checkCollection();
+	render.setPetalSize(size);
+	render.setPetalTint(tintFor((size - 1) / (MAX_SIZE - 1)));
+	render.frame(dt, { x: petal.x, y: petal.y }, petal.bank, clock.elapsedTime);
+	render.renderer.render(render.scene, render.camera);
+	requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
