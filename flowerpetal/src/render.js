@@ -170,6 +170,45 @@ export function initRender(canvas) {
   let petalGeometry = PETAL_GEO; // upgraded to the CC-BY model when loaded
   let windIntensity = 0; // 0 = calm, 1 = full wind rush (ramps with steering)
 
+  // Add ONE new petal (ease-in) without disturbing the existing swarm.
+  // Existing petals keep their orbits/poses; only the next one appears small
+  // at the centre and grows into place — no full-swarm reset on pickup.
+  function spawnPetalMesh() {
+    const color = petalColors[petalColors.length - 1] ?? 0xff9ec0;
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.28,
+      roughness: 0.5,
+      metalness: 0.08,
+      vertexColors: true,
+      side: THREE.DoubleSide,
+    });
+    const m = new THREE.Mesh(petalGeometry, mat);
+    m.userData = {
+      orbit: Math.random() * Math.PI * 2,
+      dir: Math.random() < 0.5 ? -1 : 1,
+      speed: 0.4 + Math.random() * 0.9,
+      radius0: 0.28 + Math.random() * 0.85,
+      flat: 0.45 + Math.random() * 0.85,
+      z0: (Math.random() - 0.5) * 1.15,
+      zdepth: 0.35 + Math.random() * 0.55,
+      ph0: Math.random() * Math.PI * 2,
+      breathe: 0.6 + Math.random() * 1.0,
+      tumble: 1.1 + Math.random() * 1.6,
+      born: nowSec, // eases in from the swarm centre
+      baseYaw: (Math.random() - 0.5) * 2.6,
+      basePitch: (Math.random() - 0.5) * 0.9,
+      baseRoll: (Math.random() - 0.5) * 1.1,
+    };
+    m.scale.setScalar(0.2); // start small at the centre
+    m.position.set(0, 0, 0);
+    petalRing.add(m);
+    petalMeshes.push(m);
+    petalMats.push(mat);
+    return m;
+  }
+
   function rebuildPetals() {
     for (const m of petalMeshes) {
       petalRing.remove(m);
@@ -345,9 +384,16 @@ export function initRender(canvas) {
       petal.scale.setScalar(s);
     },
     addPetal(hex) {
+      if (petalColors.length >= MAX_PETALS) {
+        // At the cap: drop the oldest petal, keep the rest, add the newest.
+        const oldest = petalMeshes.shift();
+        petalRing.remove(oldest);
+        oldest.material.dispose();
+        petalMats.shift();
+        petalColors.shift();
+      }
       petalColors.push(hex);
-      if (petalColors.length > MAX_PETALS) petalColors.shift();
-      rebuildPetals();
+      spawnPetalMesh(); // only the new petal animates — the swarm stays put
     },
     setPetalCount(n) {
       const cur = petalColors[petalColors.length - 1] ?? 0xff9ec6;
