@@ -334,29 +334,29 @@ export function initRender(canvas) {
     clouds.push(c);
   }
 
-  // Wind streak ring: instanced thin light blades that swirl around the
-  // player, growing long and bright with the steering wind-rush.
-  const STREAK_N = 26;
-  const streakGeo = new THREE.PlaneGeometry(0.5, 0.5, 1, 1);
+  // Wind streaks: a handful of very thin, faint light lines that stream with
+  // the travel direction. Deliberately sparse and slim — a whisper of air,
+  // not white bars.
+  const STREAK_N = 10;
+  const streakGeo = new THREE.PlaneGeometry(0.09, 0.9, 1, 1); // thin slivers
   const streakMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
+    color: 0xfff6e8,
     transparent: true,
-    opacity: 0.1,
+    opacity: 0.06,
     side: THREE.DoubleSide,
     depthWrite: false,
+    depthTest: true,
   });
   const streakMesh = new THREE.InstancedMesh(streakGeo, streakMat, STREAK_N);
   streakMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  // Lives around the moving player — never frustum-cull it or the whole ring
-  // vanishes once the origin drifts out of the initial bounds.
   streakMesh.frustumCulled = false;
   const streakSeeds = [];
   for (let i = 0; i < STREAK_N; i++) {
     streakSeeds.push({
-      ang: (i / STREAK_N) * Math.PI * 2 + Math.random() * 0.4,
-      spin: 0.4 + Math.random() * 0.5,
-      r: 2.2 + Math.random() * 2.4,
-      yoff: (Math.random() - 0.5) * 2.6,
+      ang: (i / STREAK_N) * Math.PI * 2 + Math.random() * 0.5,
+      spin: 0.3 + Math.random() * 0.3,
+      r: 1.6 + Math.random() * 1.6,
+      yoff: (Math.random() - 0.5) * 1.6,
     });
   }
   scene.add(streakMesh);
@@ -630,13 +630,13 @@ export function initRender(canvas) {
           sDummy.position.set(pxw, petalPos.y + latY, pzw);
           // Orient the long dimension along the travel axis and stretch with wind.
           sDummy.rotation.y = Math.atan2(ex, ez > 0 ? ez : 0.0001) * -1;
-          sDummy.rotation.z = Math.sin(s.ang * 2 + timeSec * 0.8) * 0.12;
-          sDummy.scale.set(1, 1 + windIntensity * 1.8, 1 + windIntensity * 2.4);
+          sDummy.rotation.z = Math.sin(s.ang * 2 + timeSec * 0.8) * 0.06;
+          sDummy.scale.set(1, 1 + windIntensity * 0.9, 1 + windIntensity * 1.6);
           sDummy.updateMatrix();
           streakMesh.setMatrixAt(i, sDummy.matrix);
         }
         streakMesh.instanceMatrix.needsUpdate = true;
-        streakMat.opacity = 0.15 + windIntensity * 0.55;
+        streakMat.opacity = 0.05 + windIntensity * 0.3;
       }
 
       // Camera trails behind (larger z) and above the petal, looking ahead.
