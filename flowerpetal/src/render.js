@@ -35,7 +35,7 @@ const STEM_MAT = new THREE.MeshStandardMaterial({ color: 0x3e8f3e, roughness: 0.
 const STEM_LEN = 2.2;
 const CROWN_LIFT = STEM_LEN + 0.25; // crown height above the terrain
 
-const PETAL_GEO = new THREE.SphereGeometry(0.34, 8, 6);
+const PETAL_GEO = new THREE.SphereGeometry(0.26, 8, 6);
 PETAL_GEO.scale(1.6, 0.75, 0.3);
 export const MAX_PETALS = 8;
 const PETAL_RING_R = 0.3;
@@ -130,6 +130,7 @@ export function initRender(canvas) {
   const petalMats = [];
   const petalMeshes = [];
   let petalColors = [0xff9ec0];
+  let nowSec = 0; // game clock, cached from frame() for eases
 
   function rebuildPetals() {
     for (const m of petalMeshes) {
@@ -152,6 +153,7 @@ export function initRender(canvas) {
       // as a rigid circle.
       // Petals are scattered through a loose 3D ball — distinct x/y/z origins
       // (z depth included) so they swirl as a swarm without stacking flat.
+      const isNew = i === count - 1 && count > 1; // newest petal eases in
       m.userData = {
         orbit: Math.random() * Math.PI * 2,
         dir: Math.random() < 0.5 ? -1 : 1,
@@ -163,11 +165,13 @@ export function initRender(canvas) {
         ph0: Math.random() * Math.PI * 2,
         breathe: 0.6 + Math.random() * 1.0,
         tumble: 1.1 + Math.random() * 1.6,
+        born: isNew ? nowSec : -10, // -10 = already fully grown in
       };
+      m.scale.setScalar(isNew ? 0.2 : 1); // new petal starts small
       m.position.set(
-        Math.cos(m.userData.ph0) * m.userData.radius0,
-        Math.sin(m.userData.ph0) * m.userData.radius0 * m.userData.flat + (Math.random() - 0.5) * 0.4,
-        m.userData.z0
+        isNew ? 0 : Math.cos(m.userData.ph0) * m.userData.radius0,
+        isNew ? 0 : Math.sin(m.userData.ph0) * m.userData.radius0 * m.userData.flat + (Math.random() - 0.5) * 0.4,
+        isNew ? 0 : m.userData.z0
       );
       petalRing.add(m);
       petalMeshes.push(m);
@@ -281,6 +285,7 @@ export function initRender(canvas) {
       for (const mat of petalMats) mat.emissiveIntensity = intensity;
     },
     frame(dt, petalPos, bank, timeSec) {
+      nowSec = timeSec; // keep the acquisition clock current
       petal.position.set(petalPos.x, petalPos.y, petalPos.z);
       petal.rotation.z = bank * 0.6;
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
@@ -292,6 +297,15 @@ export function initRender(canvas) {
       for (let i = 0; i < petalMeshes.length; i++) {
         const m = petalMeshes[i];
         const u = m.userData;
+        // Ease-in for a freshly acquired petal: ~1s smoothstep from the swarm
+        // centre (small) to its own orbit (full size), so new petals drift
+        // out instead of snapping into place.
+        let ease = 1;
+        if (u.born >= 0) {
+          const age = timeSec - u.born;
+          const k = Math.min(1, age / 1.0);
+          ease = k * k * (3 - 2 * k); // smoothstep
+        }
         // Orbit advances; wind speeds it up and drifts the phase downstream.
         u.orbit += dt * u.dir * u.speed * (0.6 + Math.abs(windBias)) + windBias * dt * 1.3;
         const rad = u.radius0 * (1 + 0.28 * Math.sin(timeSec * u.breathe + u.ph0));
@@ -300,7 +314,8 @@ export function initRender(canvas) {
         const px = Math.cos(u.orbit) * rad;
         const py = Math.sin(u.orbit) * rad * u.flat + 0.18 * Math.sin(timeSec * u.tumble + u.ph0);
         const pz = u.z0 + Math.sin(timeSec * 1.3 + u.orbit * 3) * u.zdepth;
-        m.position.set(px, py, pz);
+        m.position.set(px * ease, py * ease, pz * ease);
+        m.scale.setScalar(0.2 + ease * 0.8);
         // Tumble: spin around the petal's long axis and wobble face-on.
         m.rotation.z = Math.sin(u.orbit + u.ph0) * 0.5 + Math.sin(timeSec * u.tumble + u.ph0) * 0.28;
         m.rotation.x = windBias * 0.7 + Math.sin(timeSec * 1.9 + u.ph0) * 0.22;
