@@ -187,6 +187,22 @@ function geometryFromObj(text) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   g.computeBoundingBox();
+  // Bake a vertical light gradient into vertex colors (base darker → tip
+  // lighter) so the petal always shows gentle form, independent of lights.
+  const bb = g.boundingBox;
+  const dz = bb.max.z - bb.min.z;
+  const dx = bb.max.x - bb.min.x;
+  const dy = bb.max.y - bb.min.y;
+  const longAxis = dz >= dx && dz >= dy ? 2 : dx >= dy ? 0 : 1;
+  const span = Math.max(1e-6, bb.max.getComponent(longAxis) - bb.min.getComponent(longAxis));
+  const col = new Float32Array(positions.length);
+  for (let i = 0; i < positions.length / 3; i++) {
+    const v = positions[i * 3 + longAxis];
+    const t = THREE.MathUtils.clamp((v - bb.min.getComponent(longAxis)) / span, 0, 1);
+    const bright = 0.68 + t * 0.32;
+    col[i * 3] = bright; col[i * 3 + 1] = bright; col[i * 3 + 2] = bright;
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return g;
 }
 
@@ -398,9 +414,11 @@ function loop() {
   render.setPetalSize(size);
   render.setPetalGlow((size - 1) / (MAX_SIZE - 1));
   const windLean = Math.max(-0.3, Math.min(0.3, wind.swayVx * 0.3));
-  // Steering intensity (0..1): drives the wind-screen effect + camera zoom.
-  const steerLevel = (input.left || input.right) ? 1 : 0;
-  render.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank + windLean, clock.elapsedTime, steerLevel);
+  // Wind effect level (0..1): steering is the big push, but the ambient wind
+  // current always contributes a little so there is visible motion at rest.
+  const ambWind = Math.abs(wind.swayVx);
+  const windLevel = Math.min(1, (input.left || input.right ? 0.75 : 0) + ambWind * 0.5);
+  render.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank + windLean, clock.elapsedTime, windLevel);
   render.renderer.render(render.scene, render.camera);
   requestAnimationFrame(loop);
 }

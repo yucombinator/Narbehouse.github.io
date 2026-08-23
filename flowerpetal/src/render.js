@@ -101,8 +101,11 @@ export function initRender(canvas) {
   // --- World-fixed ground: ONE plane at world origin, displaced by HILLS at
   // true world coordinates. Flowers, grass, and the petal's clamp sample the
   // same function at the same origin, so nothing can float off the surface.
+  // Big enough to cover the whole flight path with grass always on it. The
+  // fog hides the far edge; the terrain stays world-fixed so flowers, grass
+  // and the petal's floor-clamp all sample the same HILLS at the same origin.
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(1600, 1600, 128, 128),
+    new THREE.PlaneGeometry(6000, 6000, 160, 160),
     new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true })
   );
   {
@@ -179,8 +182,11 @@ export function initRender(canvas) {
       const mat = new THREE.MeshStandardMaterial({
         color: petalColors[i] ?? petalColors[petalColors.length - 1],
         emissive: petalColors[i] ?? petalColors[petalColors.length - 1],
-        emissiveIntensity: 0.4,
-        roughness: 0.4,
+        emissiveIntensity: 0.28,
+        roughness: 0.5,
+        metalness: 0.08,
+        vertexColors: true, // use the baked light gradient for form
+        side: THREE.DoubleSide,
       });
       const m = new THREE.Mesh(petalGeometry, mat);
       // Each petal tumbles on its own: distinct orbit radius, speed, phase,
@@ -220,10 +226,11 @@ export function initRender(canvas) {
     }
   }
 
-  // Shading: a cold sky fill + a warm key sun cast from one side so the
-  // rolling hills, flowers and petals get real form (lit side vs shadow).
-  const ambient = new THREE.HemisphereLight(0xcfe8ff, 0x9ecb6a, 0.85);
-  const sun = new THREE.DirectionalLight(0xfff2d8, 1.5);
+  // Global shading: warm key sun from one side, cold sky fill above, and a
+  // soft rim light from the opposite side so every surface — hills, flowers
+  // and especially the tumbling petals — reads with form and a lit rim.
+  const ambient = new THREE.HemisphereLight(0xcfe8ff, 0x7a9e4a, 0.95);
+  const sun = new THREE.DirectionalLight(0xfff2d8, 1.4);
   sun.position.set(40, 70, 25);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
@@ -233,7 +240,9 @@ export function initRender(canvas) {
   sun.shadow.camera.right = 60;
   sun.shadow.camera.top = 60;
   sun.shadow.camera.bottom = -60;
-  scene.add(ambient, sun);
+  const rim = new THREE.DirectionalLight(0xbfe4ff, 0.55);
+  rim.position.set(-45, 20, -30);
+  scene.add(ambient, sun, rim);
   ground.receiveShadow = true; // hills catch shade from flowers/petals
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
