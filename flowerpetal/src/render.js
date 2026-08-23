@@ -639,8 +639,8 @@ export function initRender(canvas) {
       // from the camera and the trail streams 12–25 out, so the band is wide
       // (6–20) to actually be visible during play, not just on a head-on
       // dive into the lens.
-      const FADE_NEAR = 6;
-      const FADE_FAR = 20;
+      const FADE_NEAR = 7;
+      const FADE_FAR = 22;
       for (let i = 0; i < petalMeshes.length; i++) {
         const m = petalMeshes[i];
         const u = m.userData;
@@ -651,7 +651,7 @@ export function initRender(canvas) {
           camera.position.z - u.worldZ
         );
         const alpha = Math.min(1, Math.max(0, (camDist - FADE_NEAR) / (FADE_FAR - FADE_NEAR)));
-        m.material.opacity = 0.25 + 0.75 * alpha; // faint hint even at 0 distance
+        m.material.opacity = 0.1 + 0.9 * alpha; // nearly gone when right at the lens
       }
     },
   };
