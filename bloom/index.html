@@ -2,6 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- Pin every relative URL (scripts, managers, fetched assets) to /bloom/
+     so the page also works when served without the trailing slash
+     (http://localhost:8000/bloom), where ./src/main.js would otherwise
+     resolve against the site root and 404. -->
+<base href="/bloom/">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bloom</title>
 <style>
