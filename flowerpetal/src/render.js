@@ -8,6 +8,277 @@ import { createGrass } from './grass.js?v=5';
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
 
+// --- Botanical Shading for Flowers, Stems, and Petals (Matching Grass SSS + Sun + Sky + Fog) ---
+const FLOWER_VERTEX_SHADER = `
+  precision highp float;
+
+  attribute vec3 color;
+  attribute float aCenter;
+
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+  varying vec3 vColor;
+  varying float vCenter;
+  varying vec3 vInstanceColor;
+
+  void main() {
+    vColor = color;
+    vCenter = aCenter;
+    vInstanceColor = instanceColor;
+
+    vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+
+    mat3 normalMat = mat3(modelMatrix * instanceMatrix);
+    vNormal = normalize(normalMat * normal);
+
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const FLOWER_FRAGMENT_SHADER = `
+  precision highp float;
+
+  uniform vec3 uSunDir;
+  uniform vec3 uCameraPos;
+  uniform vec3 fogColor;
+  uniform float fogNear;
+  uniform float fogFar;
+
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+  varying vec3 vColor;
+  varying float vCenter;
+  varying vec3 vInstanceColor;
+
+  void main() {
+    vec3 viewDir = normalize(uCameraPos - vWorldPos);
+    vec3 sunDir = normalize(uSunDir);
+
+    // Warm golden-amber pollen stamen center; petals take vibrant instance color with organic petal gradient
+    vec3 pollenColor = vec3(1.15, 0.88, 0.28);
+    vec3 baseColor = mix(vInstanceColor * vColor, pollenColor * vColor, vCenter);
+
+    // Organic botanical lighting (harmonious with grass):
+    float nDotL = max(0.0, dot(vNormal, sunDir));
+
+    // Translucent Subsurface Scattering (sunlight filtering through petal membranes)
+    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * (0.55 * (1.0 - vCenter * 0.45));
+
+    // Hemispheric sky fill
+    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.42 + 0.32 * max(0.0, vNormal.y));
+
+    // Sun light with warm golden tone
+    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.75 + sss);
+
+    // Soft velvety rim sheen (Fresnel)
+    float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.8) * 0.32;
+
+    vec3 finalColor = baseColor * (skyLight + sunLight) + vec3(1.0, 0.96, 0.88) * fresnel;
+
+    // Atmospheric distance fog
+    float depth = gl_FragCoord.z / gl_FragCoord.w;
+    float fogFactor = clamp((depth - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+    fogFactor = pow(fogFactor, 1.2);
+    finalColor = mix(finalColor, fogColor, fogFactor);
+
+    gl_FragColor = vec4(finalColor, 1.0);
+  }
+`;
+
+const STEM_VERTEX_SHADER = `
+  precision highp float;
+
+  attribute vec3 color;
+
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+  varying vec3 vColor;
+
+  void main() {
+    vColor = color;
+
+    vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+
+    mat3 normalMat = mat3(modelMatrix * instanceMatrix);
+    vNormal = normalize(normalMat * normal);
+
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const STEM_FRAGMENT_SHADER = `
+  precision highp float;
+
+  uniform vec3 uSunDir;
+  uniform vec3 uCameraPos;
+  uniform vec3 fogColor;
+  uniform float fogNear;
+  uniform float fogFar;
+
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+  varying vec3 vColor;
+
+  void main() {
+    vec3 viewDir = normalize(uCameraPos - vWorldPos);
+    vec3 sunDir = normalize(uSunDir);
+
+    vec3 baseColor = vColor;
+
+    float nDotL = max(0.0, dot(vNormal, sunDir));
+    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * 0.38;
+
+    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.42 + 0.30 * max(0.0, vNormal.y));
+    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.75 + sss);
+
+    vec3 finalColor = baseColor * (skyLight + sunLight);
+
+    float depth = gl_FragCoord.z / gl_FragCoord.w;
+    float fogFactor = clamp((depth - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+    fogFactor = pow(fogFactor, 1.2);
+    finalColor = mix(finalColor, fogColor, fogFactor);
+
+    gl_FragColor = vec4(finalColor, 1.0);
+  }
+`;
+
+const MOTHER_VERTEX_SHADER = `
+  precision highp float;
+
+  attribute vec3 color;
+  attribute float aCenter;
+
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+  varying vec3 vColor;
+  varying float vCenter;
+
+  void main() {
+    vColor = color;
+    vCenter = aCenter;
+
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+
+    vNormal = normalize(mat3(modelMatrix) * normal);
+
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const MOTHER_FRAGMENT_SHADER = `
+  precision highp float;
+
+  uniform vec3 uColor;
+  uniform vec3 uSunDir;
+  uniform vec3 uCameraPos;
+  uniform vec3 fogColor;
+  uniform float fogNear;
+  uniform float fogFar;
+
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+  varying vec3 vColor;
+  varying float vCenter;
+
+  void main() {
+    vec3 viewDir = normalize(uCameraPos - vWorldPos);
+    vec3 sunDir = normalize(uSunDir);
+
+    vec3 pollenColor = vec3(1.18, 0.92, 0.32);
+    vec3 baseColor = mix(uColor * vColor, pollenColor * vColor, vCenter);
+
+    float nDotL = max(0.0, dot(vNormal, sunDir));
+    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * (0.60 * (1.0 - vCenter * 0.45));
+
+    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.42 + 0.32 * max(0.0, vNormal.y));
+    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.75 + sss);
+
+    float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.8) * 0.40;
+
+    vec3 emissive = uColor * 0.32;
+    vec3 finalColor = baseColor * (skyLight + sunLight) + emissive + vec3(1.0, 0.96, 0.88) * fresnel;
+
+    float depth = gl_FragCoord.z / gl_FragCoord.w;
+    float fogFactor = clamp((depth - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+    fogFactor = pow(fogFactor, 1.2);
+    finalColor = mix(finalColor, fogColor, fogFactor);
+
+    gl_FragColor = vec4(finalColor, 0.95);
+  }
+`;
+
+const PETAL_VERTEX_SHADER = `
+  precision highp float;
+
+  attribute vec3 color;
+
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+  varying vec3 vColor;
+
+  void main() {
+    vColor = color;
+
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+
+    vNormal = normalize(mat3(modelMatrix) * normal);
+
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+  }
+`;
+
+const PETAL_FRAGMENT_SHADER = `
+  precision highp float;
+
+  uniform vec3 uColor;
+  uniform float uGlow;
+  uniform float uOpacity;
+  uniform vec3 uSunDir;
+  uniform vec3 uCameraPos;
+  uniform vec3 fogColor;
+  uniform float fogNear;
+  uniform float fogFar;
+
+  varying vec3 vWorldPos;
+  varying vec3 vNormal;
+  varying vec3 vColor;
+
+  void main() {
+    vec3 viewDir = normalize(uCameraPos - vWorldPos);
+    vec3 sunDir = normalize(uSunDir);
+
+    vec3 baseColor = uColor * vColor;
+
+    float nDotL = max(0.0, dot(vNormal, sunDir));
+
+    // Translucent Subsurface Scattering (golden backlighting through petal)
+    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * 0.65;
+
+    vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.45 + 0.30 * max(0.0, vNormal.y));
+    vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.75 + sss);
+
+    // Velvet rim sheen (Fresnel)
+    float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.6) * 0.45;
+
+    // Emissive glow (ramps up on collection/size growth)
+    vec3 emissive = uColor * (0.18 + uGlow * 0.75);
+
+    vec3 finalColor = baseColor * (skyLight + sunLight) + emissive + vec3(1.0, 0.96, 0.90) * fresnel;
+
+    // Atmospheric distance fog
+    float depth = gl_FragCoord.z / gl_FragCoord.w;
+    float fogFactor = clamp((depth - fogNear) / (fogFar - fogNear), 0.0, 1.0);
+    fogFactor = pow(fogFactor, 1.2);
+    finalColor = mix(finalColor, fogColor, fogFactor);
+
+    gl_FragColor = vec4(finalColor, uOpacity);
+  }
+`;
+
 // A petal as a rounded teardrop: stretched blob, tapered toward the crown,
 // used in two layers so blooms read as organic petals instead of blobby
 // spheres. Higher segment counts for a smooth silhouette.
@@ -15,6 +286,21 @@ function teardropPetal(len, wide, thin = 0.3) {
   const g = new THREE.SphereGeometry(len, 14, 10);
   g.scale(wide, wide * 0.62, thin);
   g.rotateZ(0); // long axis along +x before being rotated per-petal
+  const pos = g.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const centers = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const span = Math.max(0.01, len * wide * 2);
+    const t = THREE.MathUtils.clamp((x + len * wide) / span, 0, 1);
+    const bright = 0.72 + t * 0.38;
+    colors[i * 3] = bright;
+    colors[i * 3 + 1] = bright * 0.98;
+    colors[i * 3 + 2] = bright * 0.95;
+    centers[i] = 0.0;
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.setAttribute('aCenter', new THREE.Float32BufferAttribute(centers, 1));
   return g;
 }
 
@@ -38,6 +324,17 @@ function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 
   // Fuzzy center: a small, denser sphere with a crown bump.
   const heart = new THREE.SphereGeometry(centerRadius, 12, 9);
   heart.scale(1, 1, 0.9);
+  const hpos = heart.attributes.position;
+  const hcolors = new Float32Array(hpos.count * 3);
+  const hcenters = new Float32Array(hpos.count);
+  for (let i = 0; i < hpos.count; i++) {
+    hcolors[i * 3] = 1.0;
+    hcolors[i * 3 + 1] = 0.82;
+    hcolors[i * 3 + 2] = 0.32;
+    hcenters[i] = 1.0;
+  }
+  heart.setAttribute('color', new THREE.Float32BufferAttribute(hcolors, 3));
+  heart.setAttribute('aCenter', new THREE.Float32BufferAttribute(hcenters, 1));
   parts.push(heart);
   return mergeGeometries(parts);
 }
@@ -51,7 +348,20 @@ const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5
 // from the ground to the flower crown. Bases at y=0 (lives in world space).
 const STEM_GEO = new THREE.CylinderGeometry(0.03, 0.05, 1, 6);
 STEM_GEO.translate(0, 0.5, 0);
-const STEM_MAT = new THREE.MeshStandardMaterial({ color: 0x3e8f3e, roughness: 0.8 });
+{
+  const spos = STEM_GEO.attributes.position;
+  const scol = new Float32Array(spos.count * 3);
+  const root = new THREE.Color(0x1a3810);
+  const top = new THREE.Color(0x428224);
+  for (let i = 0; i < spos.count; i++) {
+    const y = spos.getY(i);
+    const c = root.clone().lerp(top, THREE.MathUtils.clamp(y, 0, 1));
+    scol[i * 3] = c.r;
+    scol[i * 3 + 1] = c.g;
+    scol[i * 3 + 2] = c.b;
+  }
+  STEM_GEO.setAttribute('color', new THREE.Float32BufferAttribute(scol, 3));
+}
 const STEM_LEN = 3.2;
 const CROWN_LIFT = STEM_LEN + 0.35; // crown height above the terrain (stands above grass)
 
@@ -62,13 +372,20 @@ const PETAL_GEO = new THREE.SphereGeometry(0.2, 14, 10);
 PETAL_GEO.scale(0.3, 0.62, 1.6);
 {
   const pos = PETAL_GEO.attributes.position;
+  const pcol = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
     const z = pos.getZ(i) / 1.6; // -1..1 along the blade
     // taper width toward the base (z = -1) and round the tip (z = +1)
     const taper = 0.45 + 0.55 * Math.pow(0.5 + z * 0.5, 0.7);
     pos.setX(i, pos.getX(i) * taper);
     pos.setY(i, pos.getY(i) * (0.75 + 0.25 * Math.sin(Math.PI * Math.min(1, Math.max(0, (z + 1) / 2)))));
+    const t = THREE.MathUtils.clamp((z + 1) / 2, 0, 1);
+    const bright = 0.68 + t * 0.36;
+    pcol[i * 3] = bright;
+    pcol[i * 3 + 1] = bright;
+    pcol[i * 3 + 2] = bright;
   }
+  PETAL_GEO.setAttribute('color', new THREE.Float32BufferAttribute(pcol, 3));
   PETAL_GEO.computeVertexNormals();
 }
 export const MAX_PETALS = 8;
@@ -297,7 +614,67 @@ export function initRender(canvas) {
     scene,
     hillsParams: hp,
     skyBottom: SKY_BOTTOM,
+  });  // --- Flower, Stem & Mother Materials (Unified with Grass SSS & Lighting) ---
+  const flowerCrownMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uSunDir: { value: new THREE.Vector3(40, 70, 25).normalize() },
+      uCameraPos: { value: new THREE.Vector3() },
+      fogColor: { value: new THREE.Color(SKY_BOTTOM) },
+      fogNear: { value: 75 },
+      fogFar: { value: 380 },
+    },
+    vertexShader: FLOWER_VERTEX_SHADER,
+    fragmentShader: FLOWER_FRAGMENT_SHADER,
+    side: THREE.DoubleSide,
   });
+
+  const stemMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uSunDir: { value: new THREE.Vector3(40, 70, 25).normalize() },
+      uCameraPos: { value: new THREE.Vector3() },
+      fogColor: { value: new THREE.Color(SKY_BOTTOM) },
+      fogNear: { value: 75 },
+      fogFar: { value: 380 },
+    },
+    vertexShader: STEM_VERTEX_SHADER,
+    fragmentShader: STEM_FRAGMENT_SHADER,
+    side: THREE.DoubleSide,
+  });
+
+  const motherMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(0xff8cb8) },
+      uSunDir: { value: new THREE.Vector3(40, 70, 25).normalize() },
+      uCameraPos: { value: new THREE.Vector3() },
+      fogColor: { value: new THREE.Color(SKY_BOTTOM) },
+      fogNear: { value: 75 },
+      fogFar: { value: 380 },
+    },
+    vertexShader: MOTHER_VERTEX_SHADER,
+    fragmentShader: MOTHER_FRAGMENT_SHADER,
+    side: THREE.DoubleSide,
+    transparent: true,
+  });
+
+  let currentGlow = 0;
+  function createPetalMaterial(colorHex) {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(colorHex) },
+        uGlow: { value: currentGlow },
+        uOpacity: { value: 1.0 },
+        uSunDir: { value: new THREE.Vector3(40, 70, 25).normalize() },
+        uCameraPos: { value: new THREE.Vector3() },
+        fogColor: { value: new THREE.Color(SKY_BOTTOM) },
+        fogNear: { value: 75 },
+        fogFar: { value: 380 },
+      },
+      vertexShader: PETAL_VERTEX_SHADER,
+      fragmentShader: PETAL_FRAGMENT_SHADER,
+      side: THREE.DoubleSide,
+      transparent: true,
+    });
+  }
 
   // --- Player: a swirling wreath of petals ("I am the wind, not the flower").
   // No center bloom, no heart — just loose petals circling a point.
@@ -319,15 +696,7 @@ export function initRender(canvas) {
   // at the centre and grows into place — no full-swarm reset on pickup.
   function spawnPetalMesh() {
     const color = petalColors[petalColors.length - 1] ?? 0xff9ec0;
-    const mat = new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 0.28,
-      roughness: 0.5,
-      metalness: 0.08,
-      vertexColors: true,
-      side: THREE.DoubleSide,
-    });
+    const mat = createPetalMaterial(color);
     const m = new THREE.Mesh(petalGeometry, mat);
     m.userData = {
       orbit: Math.random() * Math.PI * 2,
@@ -362,15 +731,8 @@ export function initRender(canvas) {
     petalMats.length = 0;
     const count = Math.max(1, Math.min(MAX_PETALS, petalColors.length));
     for (let i = 0; i < count; i++) {
-      const mat = new THREE.MeshStandardMaterial({
-        color: petalColors[i] ?? petalColors[petalColors.length - 1],
-        emissive: petalColors[i] ?? petalColors[petalColors.length - 1],
-        emissiveIntensity: 0.28,
-        roughness: 0.5,
-        metalness: 0.08,
-        vertexColors: true, // use the baked light gradient for form
-        side: THREE.DoubleSide,
-      });
+      const color = petalColors[i] ?? petalColors[petalColors.length - 1];
+      const mat = createPetalMaterial(color);
       const m = new THREE.Mesh(petalGeometry, mat);
       // Each petal tumbles on its own: distinct orbit radius, speed, phase,
       // breathing and tumble rates, so the swarm churns instead of rotating
@@ -450,7 +812,6 @@ export function initRender(canvas) {
   }
   let ringCursor = 0;
 
-  const motherMat = new THREE.MeshBasicMaterial({ color: 0xff9ecb, transparent: true, opacity: 0.95 });
   const mother = new THREE.Mesh(MOTHER_FLOWER, motherMat);
   mother.visible = false;
   mother.userData.wx = 0;
@@ -549,12 +910,17 @@ export function initRender(canvas) {
       rebuildPetals();
     },
     setPetalGlow(progress) {
-      const intensity = 0.35 + progress * 0.6;
-      for (const mat of petalMats) mat.emissiveIntensity = intensity;
+      currentGlow = progress;
+      for (const mat of petalMats) mat.uniforms.uGlow.value = currentGlow;
     },
     // Swap in the loaded 3D petal (CC-BY cherry blossom). Applied to every
     // petal on the next rebuild; the procedural one is used until then.
     setPetalGeometry(geo) {
+      if (!geo.getAttribute('color')) {
+        const count = geo.getAttribute('position').count;
+        const col = new Float32Array(count * 3).fill(1.0);
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      }
       petalGeometry = geo;
       for (const m of petalMeshes) m.geometry = geo;
     },
@@ -569,7 +935,7 @@ export function initRender(canvas) {
       petal.rotation.z = bank * 0.6;
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
       // Wind intensity eases toward the steering input.
-      	      windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 1.1));
+      windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 1.1));
       // Trail: record the recent path, spaced ~2.5 units apart so slots
       // stretch a real distance behind the player (not every frame collapsed
       // at one point).
@@ -630,12 +996,17 @@ export function initRender(canvas) {
         u.worldX = petalPos.x + pwx;
         u.worldY = finalY;
         u.worldZ = petalPos.z + pwz;
-        m.material.transparent = true;
       }
 
       // Terrain & Grass shader uniforms update (zero per-instance CPU loop)
       terrainMat.uniforms.uCameraPos.value.copy(camera.position);
       terrainMat.uniforms.uTime.value = timeSec;
+      flowerCrownMat.uniforms.uCameraPos.value.copy(camera.position);
+      stemMat.uniforms.uCameraPos.value.copy(camera.position);
+      motherMat.uniforms.uCameraPos.value.copy(camera.position);
+      for (const mat of petalMats) {
+        mat.uniforms.uCameraPos.value.copy(camera.position);
+      }
       grass.update(timeSec, petalPos, bank, wind, camera.position);
 
       // Sun and shadow follow the player smoothly down the meadow
@@ -802,7 +1173,7 @@ export function initRender(canvas) {
           camera.position.z - u.worldZ
         );
         const alpha = Math.min(1, Math.max(0, (camDist - FADE_NEAR) / (FADE_FAR - FADE_NEAR)));
-        m.material.opacity = 0.1 + 0.9 * alpha; // nearly gone when right at the lens
+        m.material.uniforms.uOpacity.value = 0.1 + 0.9 * alpha; // nearly gone when right at the lens
       }
     },
   };
@@ -819,7 +1190,6 @@ export function initRender(canvas) {
     for (const m of budMeshes) {
       scene.remove(m);
       m.geometry.dispose();
-      m.material.dispose();
     }
     budMeshes = [];
     for (const m of stemMeshes) {
@@ -831,7 +1201,7 @@ export function initRender(canvas) {
       if (!indices.length) return;
       const mesh = new THREE.InstancedMesh(
         KIND_GEOMETRIES[k],
-        new THREE.MeshBasicMaterial({ color: 0xffffff }),
+        flowerCrownMat,
         indices.length
       );
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -839,13 +1209,14 @@ export function initRender(canvas) {
         budLocal[idx] = local;
         mesh.setColorAt(local, new THREE.Color(buds[idx].colorHex));
       });
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.castShadow = true;
       mesh.frustumCulled = false;
       scene.add(mesh);
       budMeshes[k] = mesh;
 
       // A stem beneath each crown of this kind.
-      const stems = new THREE.InstancedMesh(STEM_GEO, STEM_MAT, indices.length);
+      const stems = new THREE.InstancedMesh(STEM_GEO, stemMat, indices.length);
       stems.frustumCulled = false;
       const sd = new THREE.Object3D();
       indices.forEach((idx, local) => {
