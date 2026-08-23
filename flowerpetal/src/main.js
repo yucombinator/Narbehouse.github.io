@@ -6,6 +6,7 @@ import { collectBud, tintFor } from './growth.js';
 import { noteFor } from './notes.js';
 import { initAudio } from './audio.js';
 import { nextMeadow } from './meadow.js';
+import { loadSave, writeSave, resetSave } from './state.js';
 
 const canvasWrap = document.getElementById('game');
 const canvas = document.createElement('canvas');
@@ -114,6 +115,34 @@ let allBloomed = false;
 const clock = new THREE.Clock();
 render.setTrail(trail.buds, trail.mother);
 const audio = initAudio();
+const storage = (() => {
+  try {
+    return window.localStorage || null;
+  } catch {
+    return null;
+  }
+})();
+
+function saveProgress() {
+  if (!storage) return;
+  writeSave(storage, { size, totalBuds, blooms });
+}
+
+function loadProgress() {
+  if (!storage) return;
+  const s = loadSave(storage);
+  if (!s) return;
+  size = s.size;
+  totalBuds = s.totalBuds;
+  blooms = s.blooms;
+}
+
+function resetProgress() {
+  if (storage) resetSave(storage);
+  size = 1;
+  totalBuds = 0;
+  blooms = 0;
+}
 
 // Debug/test hook (used by smoke tests).
 window.__petalGame = {
@@ -160,11 +189,12 @@ function checkCollection() {
     meadowBuds = st.meadowBuds;
     collectedSet.add(best.i);
     render.collectPop(best.i);
-    if (audio) audio.chime(noteFor(collectedLifetimeTotal++));
+    if (audio) audio.chime(noteFor(totalBuds + collectedSet.size)); // ladder continues across meadows
     if (st.doesBloom) {
       allBloomed = true;
       if (audio) audio.bloomChord();
     }
+    saveProgress();
     updateHud();
   }
 }
@@ -208,6 +238,7 @@ function bloomCheck() {
   collectedSet = new Set();
   allBloomed = false;
   render.setTrail(trail.buds, trail.mother);
+  saveProgress();
   updateHud();
 }
 
@@ -225,4 +256,63 @@ function loop() {
   render.renderer.render(render.scene, render.camera);
   requestAnimationFrame(loop);
 }
+
+// --- Title / reset flow ------------------------------------------------
+const titleEl = document.getElementById('title');
+const confirmEl = document.getElementById('confirm');
+const btnStart = document.getElementById('btnStart');
+const btnReset = document.getElementById('btnReset');
+const btnCancelReset = document.getElementById('btnCancelReset');
+const btnDoReset = document.getElementById('btnDoReset');
+
+let started = false;
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeConfirm();
+  if (!started && (e.key === ' ' || e.key === 'Enter')) {
+    startGame();
+    e.preventDefault();
+  }
+});
+
+function startGame() {
+  if (started) return;
+  started = true;
+  loadProgress();
+  render.setPetalSize(size);
+  render.setPetalTint(tintFor((size - 1) / (MAX_SIZE - 1)));
+  titleEl.style.display = 'none';
+  updateHud();
+}
+
+function openConfirm() {
+  confirmEl.classList.add('show');
+  btnCancelReset.focus();
+}
+function closeConfirm() {
+  confirmEl.classList.remove('show');
+  btnReset.focus();
+}
+function doReset() {
+  resetProgress();
+  // Return the petal to its starting meadow, at starting size.
+  meadowSeed = 42;
+  trail = generateTrail({ seed: meadowSeed });
+  petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0, y: 6 };
+  meadowBuds = 0;
+  meadowTotal = trail.buds.length;
+  collectedSet = new Set();
+  allBloomed = false;
+  render.setTrail(trail.buds, trail.mother);
+  closeConfirm();
+  updateHud();
+}
+
+btnStart.addEventListener('click', startGame);
+btnReset.addEventListener('click', () => (started ? openConfirm() : openConfirm()));
+btnCancelReset.addEventListener('click', closeConfirm);
+btnDoReset.addEventListener('click', doReset);
+
+// Start on load is not automatic; the title screen waits for the player.
+loadProgress();
 requestAnimationFrame(loop);
