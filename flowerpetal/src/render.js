@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_KINDS } from './trail.js';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
+import { createGrass } from './grass.js?v=2';
 
 export const SKY_TOP = 0x9fd8ff;
 export const SKY_BOTTOM = 0xffe3f0;
@@ -75,13 +76,15 @@ const SHADED_FRAG = `
 `;
 
 function makeShadedMaterial(color, vertexColors = false) {
-  return new THREE.ShaderMaterial({
+  const mat = new THREE.ShaderMaterial({
     uniforms: SHADED_UNIFORMS(),
     vertexShader: SHADED_VERT,
     fragmentShader: SHADED_FRAG,
     vertexColors: !!vertexColors,
     side: THREE.DoubleSide,
   });
+  mat.uniforms.uTint.value.setHex(color);
+  return mat;
 }
 
 function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5, spread = 1.0 } = {}) {
@@ -221,9 +224,8 @@ export function initRender(canvas) {
     scene.add(ground);
   }
 
-  // Grass rides the world terrain (the new grass module handles its own scene
-  // wiring; here we only keep a reference hook for the old API).
-  const GRASS_N = 0; // legacy grass disabled — grass.js owns the field now
+  // The rich grass field (custom shader) — created after the scene exists.
+  const grass = createGrass({ scene, hillsParams: HILLS.params, skyBottom: SKY_BOTTOM });
 
   // --- Player ring ---
   const petal = new THREE.Group();
@@ -522,7 +524,8 @@ export function initRender(canvas) {
         m.material.opacity = 0.1 + 0.9 * alpha;
       }
 
-      // Earth-bound: grass handled by grass.js module (its own mesh).
+      // Rich grass: feed it the camera + petal + time every frame.
+      grass.update(timeSec, petal.position, bank, { x: 0, y: -1 }, camera.position);
 
       // Flowers: planted on the terrain in true world coords.
       if (budMeshes.length) {
