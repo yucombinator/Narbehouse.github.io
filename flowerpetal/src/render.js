@@ -26,9 +26,16 @@ const KIND_GEOMETRIES = FLOWER_KINDS.map((k) =>
 );
 const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5, petals: 8, spread: 1.25 });
 
+// A slender stem for the collectible flowers: tapered green cylinder rising
+// from the ground to the flower crown. Bases at y=0 (lives in world space).
+const STEM_GEO = new THREE.CylinderGeometry(0.03, 0.05, 1, 6);
+STEM_GEO.translate(0, 0.5, 0);
+const STEM_MAT = new THREE.MeshStandardMaterial({ color: 0x3e8f3e, roughness: 0.8 });
+const STEM_LEN = 2.2;
+const CROWN_LIFT = STEM_LEN + 0.25; // crown height above the terrain
+
 const PETAL_GEO = new THREE.SphereGeometry(0.34, 8, 6);
 PETAL_GEO.scale(1.6, 0.75, 0.3);
-const PETAL_HEART_GEO = new THREE.SphereGeometry(0.15, 8, 6);
 export const MAX_PETALS = 8;
 const PETAL_RING_R = 0.3;
 
@@ -112,7 +119,8 @@ export function initRender(canvas) {
   }
   scene.add(grass);
 
-  // --- Player ring ---
+  // --- Player: a swirling wreath of petals ("I am the wind, not the flower").
+  // No center bloom, no heart — just loose petals circling a point.
   const petal = new THREE.Group();
   const petalRing = new THREE.Group();
   petal.add(petalRing);
@@ -142,17 +150,10 @@ export function initRender(canvas) {
       const r = PETAL_RING_R * (0.85 + Math.random() * 0.35);
       m.position.set(Math.cos(angle) * r, Math.sin(angle) * r, 0);
       m.rotation.z = angle + (Math.random() - 0.5) * 0.35;
+      m.rotation.x = (Math.random() - 0.5) * 0.4; // loose wobble, not a flower
       petalRing.add(m);
       petalMeshes.push(m);
       petalMats.push(mat);
-    }
-    if (!petalRing.userData.heart) {
-      const heart = new THREE.Mesh(
-        PETAL_HEART_GEO,
-        new THREE.MeshStandardMaterial({ color: 0xffd98a, emissive: 0xffb44d, emissiveIntensity: 0.5 })
-      );
-      petalRing.add(heart);
-      petalRing.userData.heart = heart;
     }
   }
 
@@ -177,6 +178,7 @@ export function initRender(canvas) {
 
   // --- Buds (one InstancedMesh per kind, child of world) ---
   let budMeshes = [];
+  let stemMeshes = [];
   let budData = [];
   let budTimes = [];
   let budLocal = [];
@@ -295,26 +297,52 @@ export function initRender(canvas) {
           const mesh = budMeshes[kind];
           if (!mesh) continue;
           const local = budLocal[i];
-          const groundY = HILLS.height(b.x, b.z) + 0.5;
+          const ground = HILLS.height(b.x, b.z);
+          const crownY = ground + CROWN_LIFT;
+          const stemMesh = stemMeshes[kind];
           if (budTimes[i] !== null) {
             budTimes[i] += dt;
+            const kt = budTimes[i] / 0.25;
             if (budTimes[i] > 0.25) {
               dummy.position.set(b.x, -500, b.z);
               dummy.scale.setScalar(0.001);
+              if (stemMesh) {
+                const sd = new THREE.Object3D();
+                sd.position.set(b.x, ground, b.z);
+                sd.scale.set(1, 0.001, 1);
+                sd.updateMatrix();
+                stemMesh.setMatrixAt(local, sd.matrix);
+              }
             } else {
-              const sc = 1 - budTimes[i] / 0.25;
-              dummy.position.set(b.x, groundY, b.z);
-              dummy.scale.setScalar(sc * KIND_SCALE[kind]);
+              const sc = (1 - kt) * KIND_SCALE[kind];
+              dummy.position.set(b.x, crownY, b.z);
+              dummy.scale.setScalar(sc);
+              if (stemMesh) {
+                const sd = new THREE.Object3D();
+                sd.position.set(b.x, ground, b.z);
+                sd.scale.set(1, STEM_LEN * (1 - kt), 1);
+                sd.updateMatrix();
+                stemMesh.setMatrixAt(local, sd.matrix);
+              }
             }
           } else {
             const sc = 1 + Math.sin(timeSec * 2.5 + i) * 0.06;
-            dummy.position.set(b.x, groundY, b.z);
+            dummy.position.set(b.x, crownY, b.z);
             dummy.scale.setScalar(sc * KIND_SCALE[kind]);
+            if (stemMesh) {
+              const sd = new THREE.Object3D();
+              sd.position.set(b.x, ground, b.z);
+              sd.rotation.z = Math.sin(timeSec * 1.6 + i) * 0.04; // gentle sway
+              sd.scale.set(1, STEM_LEN, 1);
+              sd.updateMatrix();
+              stemMesh.setMatrixAt(local, sd.matrix);
+            }
           }
           dummy.updateMatrix();
           mesh.setMatrixAt(local, dummy.matrix);
         }
         for (const m of budMeshes) m.instanceMatrix.needsUpdate = true;
+        for (const m of stemMeshes) m.instanceMatrix.needsUpdate = true;
       }
 
       // Pops.
@@ -372,6 +400,11 @@ export function initRender(canvas) {
       m.material.dispose();
     }
     budMeshes = [];
+    for (const m of stemMeshes) {
+      scene.remove(m);
+      m.geometry.dispose();
+    }
+    stemMeshes = [];
     perKind.forEach((indices, k) => {
       if (!indices.length) return;
       const mesh = new THREE.InstancedMesh(
@@ -387,6 +420,19 @@ export function initRender(canvas) {
       mesh.castShadow = true;
       scene.add(mesh);
       budMeshes[k] = mesh;
+
+      // A stem beneath each crown of this kind.
+      const stems = new THREE.InstancedMesh(STEM_GEO, STEM_MAT, indices.length);
+      const sd = new THREE.Object3D();
+      indices.forEach((idx, local) => {
+        const b = buds[idx];
+        sd.position.set(b.x, HILLS.height(b.x, b.z), b.z);
+        sd.scale.set(1, STEM_LEN, 1);
+        sd.updateMatrix();
+        stems.setMatrixAt(local, sd.matrix);
+      });
+      scene.add(stems);
+      stemMeshes[k] = stems;
     });
   }
 

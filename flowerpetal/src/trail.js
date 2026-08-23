@@ -69,10 +69,11 @@ export function generateTrail({ seed, length = 400 }) {
       const r = Math.sqrt(rand()) * CLUSTER_RADIUS;
       const bx = cx + Math.cos(a) * r;
       const bz = cz + Math.sin(a) * r;
-      const by = HILLS.height(bx, bz) + 0.5;
+      const by = HILLS.height(bx, bz) + 2.4;
       const kind = Math.floor(rand() * FLOWER_KINDS.length);
-      // Flowers grow ON the ground, not in mid-air.
-      const gy = HILLS.height(bx, bz) + 0.5;
+      // Flowers grow on stems above the ground; the crown floats clear of
+      // terrain bumps (the renderer raises it by CROWN_LIFT too).
+      const gy = HILLS.height(bx, bz) + 2.4;
       buds.push({
         x: bx,
         y: gy,

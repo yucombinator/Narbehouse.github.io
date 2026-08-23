@@ -316,18 +316,33 @@ function flightTargetY() {
   return base;
 }
 
+// Weak elastic centering: over time the petal is pulled gently back toward
+// the trail's centerline, like a soft rubber band. Steering still wins — the
+// force is small and slowly corrects wandering.
+const CENTER_STIFFNESS = 0.35; // fraction of the error per second
+const CENTER_MAX_PULL = 1.1;   // u/s cap so it never yanks
+
+function elasticCenter(dt) {
+  const centerX = trail.pointAt(petal.z).x;
+  const err = centerX - petal.x;
+  const pull = Math.max(-CENTER_MAX_PULL, Math.min(CENTER_MAX_PULL, err * CENTER_STIFFNESS));
+  petal.x += pull * dt;
+}
+
 function loop() {
   const dt = Math.min(clock.getDelta(), 1 / 20);
   const wind = windAt(clock.elapsedTime, meadowSeed);
   const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor }, input.left, input.right);
-  const p = trail.pointAt(m.z);
+  petal = { x: m.x + wind.swayVx * dt, z: m.z, y: petal.y + wind.bobY * dt, bank: m.bank };
+  const p = trail.pointAt(petal.z);
   const targetY = flightTargetY();
   // Ease altitude toward the target for a smooth guided float.
-  const y = petal.y + (targetY - petal.y) * Math.min(1, dt * 2.2) + wind.bobY * dt;
-  petal = { x: m.x + wind.swayVx * dt, z: m.z, y, bank: m.bank };
+  petal.y += (targetY - petal.y) * Math.min(1, dt * 2.2);
   clampAboveGround(); // safety net: never under the hills
+  elasticCenter(dt); // weak rubber-band pull back to the path
+  clampAboveGround(); // clamps again after lateral pulls
   windAssist(dt);
-  clampAboveGround(); // wind assist may have pushed us sideways; re-clamp
+  clampAboveGround();
   checkCollection();
   bloomCheck();
   render.setPetalSize(size);
