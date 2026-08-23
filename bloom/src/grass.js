@@ -89,8 +89,9 @@ export function buildGrassClumpGeometry() {
 export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   const hp = hillsParams;
   const TIER1_COUNT = 18000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
-  const TIER2_COUNT = 18000; // Mid domain (180m x 180m) - sweeping rolling meadows (~1.3m spacing)
-  const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT; // 36,000 clumps = 180,000 grass blades
+  const TIER2_COUNT = 18000; // Mid domain (180m x 180m) - dense rolling meadows (~1.3m spacing)
+  const TIER3_COUNT = 8000;  // Far ring (260m box, outer 88-130m) - sparse, fogged, hides the domain edge
+  const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 44,000 clumps
 
   const bladeBaseGeo = buildGrassClumpGeometry();
   const grassGeo = new THREE.InstancedBufferGeometry();
@@ -171,6 +172,23 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
     }
   }
 
+  // 3. Tier 3 (Far Ring): sparse grass filling the 180m..260m band so the
+  // meadow dissolves into the fog instead of clipping. Only the outer ring is
+  // populated (Tier 2 already covers the inner disc), with a slight overlap
+  // into Tier 2's fade so there is no density dip at the seam.
+  const t3End = t2End + TIER3_COUNT;
+  const t3Grid = Math.ceil(Math.sqrt(TIER3_COUNT * 2.5)); // over-sample, reject the inner disc
+  const t3Cell = 260.0 / t3Grid;
+  for (let gx = 0; gx < t3Grid && gIdx < t3End; gx++) {
+    for (let gz = 0; gz < t3Grid && gIdx < t3End; gz++) {
+      const ox = -130.0 + (gx + gRand() * 0.92 + 0.04) * t3Cell;
+      const oz = -130.0 + (gz + gRand() * 0.92 + 0.04) * t3Cell;
+      if (Math.hypot(ox, oz) < 88.0) continue; // Tier 2 covers the inner disc
+      populateClump(gIdx, ox, oz, 260.0, 1.05);
+      gIdx++;
+    }
+  }
+
   grassGeo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(grassOffsets, 2));
   grassGeo.setAttribute('aScale', new THREE.InstancedBufferAttribute(grassScales, 2));
   grassGeo.setAttribute('aRotation', new THREE.InstancedBufferAttribute(grassRotations, 1));
@@ -242,6 +260,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       varying float vWake;
       varying float vType;
       varying float vEdgeFade;
+      varying float vHalo;
 
       float getHillHeight(float x, float z) {
         float a1 = uHillsParams1.x;
@@ -281,9 +300,14 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
         float wz = center.y + mod(aOffset.y - center.y + halfL, L) - halfL;
         float wy = getHillHeight(wx, wz);
 
-        // Smooth edge fade towards boundary of Tier 2 domain
+        // Smooth edge fade towards the domain boundary (domain-relative so
+        // Tier 2 at 180m and Tier 3 at 260m each dissolve at their own edge).
         float distFromCenter = length(vec2(wx - center.x, wz - center.y));
-        float edgeFade = L > 80.0 ? clamp((90.0 - distFromCenter) / 25.0, 0.0, 1.0) : 1.0;
+        float edgeFade = 1.0;
+        if (L > 80.0) {
+          float halfL = L * 0.5; // Tier 2: 90, Tier 3: 130
+          edgeFade = clamp((halfL - distFromCenter) / (halfL * 0.28), 0.0, 1.0);
+        }
         vEdgeFade = edgeFade;
 
         // Blade attributes and height parameter:
@@ -371,6 +395,13 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
 
         vec2 toPetal = vec2(wx - uPetalPos.x, wz - uPetalPos.z);
         float distToPetal = length(toPetal);
+
+      // Soft petal-colour halo on the grass beneath. Computed per-vertex here
+      // (distToPetal is already needed for the wake below) and interpolated —
+      // the falloff is smooth over a blade's ~1 m span, so this is visually
+      // identical to the old per-fragment version but costs one exp per vertex
+      // instead of per pixel.
+      vHalo = exp(-distToPetal * distToPetal * 0.045) * 0.32;
 
         if (L <= 80.0 && distToPetal < 40.0) {
           // Instant bow-wave parting as the petal glides over grass
@@ -475,7 +506,6 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       precision highp float;
 
       uniform vec3 uSunDir;
-      uniform vec3 uPetalPos;
       uniform vec3 uPetalColor;
       uniform vec3 fogColor;
       uniform float fogNear;
@@ -489,6 +519,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       varying float vWake;
       varying float vType;
       varying float vEdgeFade;
+      varying float vHalo;
 
       void main() {
         float h = vUv.y;
@@ -545,15 +576,9 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
 
         vec3 finalColor = baseColor * (skyLight + sunLight);
 
-        // Soft glow from the player's petals onto the grass beneath: a warm
-        // coloured halo that falls off with horizontal distance from the petal.
-        {
-          float dx = vWorldPos.x - uPetalPos.x;
-          float dz = vWorldPos.z - uPetalPos.z;
-          float dist = sqrt(dx * dx + dz * dz);
-          float halo = exp(-dist * dist * 0.045) * 0.32;
-          finalColor += uPetalColor * halo;
-        }
+        // Soft glow from the player's petals onto the grass beneath (halo
+        // computed per-vertex in the grass vertex shader).
+        finalColor += uPetalColor * vHalo;
 
         // Blend into turf colour towards domain edges
         vec3 groundColor = mix(vec3(0.20, 0.36, 0.14), vec3(0.32, 0.52, 0.20), 0.5);
