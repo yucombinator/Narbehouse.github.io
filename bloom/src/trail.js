@@ -1,6 +1,7 @@
 // Pure random trail generation. No three.js, DOM, or WebAudio — unit-tested.
 import { mulberry32 } from './rand.js';
 import { HILLS } from './hill.js';
+import { flowerById } from './flowers.js';
 
 // Re-export for tests and callers that import the PRNG from here.
 export { mulberry32 };
@@ -53,7 +54,7 @@ export function holdableCurvature(v = CRUISE_SPEED) {
   return (G_EFF * Math.tan((MAX_BANK_DEG * Math.PI) / 180)) / (v * v);
 }
 
-export function generateTrail({ seed, length = 400 }) {
+export function generateTrail({ seed, length = 400, species = null }) {
 	const rand = mulberry32(seed);
 	const zStart = 40;                      // trail begins at the player
 	const zEnd = zStart - length;           // and runs toward -z (forward)
@@ -91,11 +92,16 @@ export function generateTrail({ seed, length = 400 }) {
       const kind = Math.floor(rand() * FLOWER_VARIANTS.length);
       // Flowers grow on stems sticking just above the grass field
       const gy = HILLS.height(bx, bz) + 3.55;
+      // Themed meadows grow their own species pool: bud colours come from
+      // real roster flowers so the field matches the region being flown.
+      const speciesHex = (species && species.length)
+        ? flowerById(species[Math.floor(rand() * species.length)])?.petalHex
+        : null;
       buds.push({
         x: bx,
         y: gy,
         z: bz,
-        colorHex: PALETTE[Math.floor(rand() * PALETTE.length)],
+        colorHex: speciesHex || PALETTE[Math.floor(rand() * PALETTE.length)],
         kind,
         kindIndex: 0, // filled below by the per-kind counter
         cluster,

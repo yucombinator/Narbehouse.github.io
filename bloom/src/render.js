@@ -8,6 +8,30 @@ import { createGrass } from './grass.js?v=9';
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
 
+// The day is a hike: each meadow has its own light. Sky gradient, fog depth,
+// sun warmth, ambient fill and a subtle ground tint shift as Ben climbs —
+// dawn garden, mid-morning valley, afternoon summit ridge.
+export const MEADOW_THEMES = [
+  {
+    name: 'Garden at Dawn', line: 'Dawn. A garden wakes below.',
+    skyTop: 0x6f93c8, skyBottom: 0xffd9b4, fogNear: 58, fogFar: 300,
+    sunColor: 0xffd9a8, sunIntensity: 1.25,
+    hemiSky: 0xffe4c4, hemiGround: 0x7a9e5a, tint: [1.07, 0.99, 0.92],
+  },
+  {
+    name: 'Valley Meadow', line: 'Mid-morning. The valley opens.',
+    skyTop: SKY_TOP, skyBottom: SKY_BOTTOM, fogNear: 75, fogFar: 380,
+    sunColor: 0xfff2d8, sunIntensity: 1.4,
+    hemiSky: 0xcfe8ff, hemiGround: 0x7a9e4a, tint: [1, 1, 1],
+  },
+  {
+    name: 'Summit Ridge', line: 'Afternoon. The summit ridge.',
+    skyTop: 0x3a7fd0, skyBottom: 0xdff0ff, fogNear: 95, fogFar: 430,
+    sunColor: 0xfff7e0, sunIntensity: 1.5,
+    hemiSky: 0xe4f2ff, hemiGround: 0x6a8e5e, tint: [0.93, 1.0, 1.03],
+  },
+];
+
 // --- Botanical Shading for Flowers, Stems, and Petals (Matching Grass SSS + Sun + Sky + Fog) ---
 const FLOWER_VERTEX_SHADER = `
   precision highp float;
@@ -606,19 +630,22 @@ export function initRender(canvas) {
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 520);
   camera.position.set(0, 10, 40);
 
-  // Sky dome.
+  // Sky dome. Vertex colours are repainted per meadow theme (see paintSky).
   const skyGeo = new THREE.SphereGeometry(500, 24, 12);
-  const skyPos = skyGeo.attributes.position;
-  const skyColors = [];
-  const top = new THREE.Color(SKY_TOP);
-  const bottom = new THREE.Color(SKY_BOTTOM);
-  for (let i = 0; i < skyPos.count; i++) {
-    const t = THREE.MathUtils.clamp(skyPos.getY(i) / 500, 0, 1);
-    skyColors.push(top.r * t + bottom.r * (1 - t), top.g * t + bottom.g * (1 - t), top.b * t + bottom.b * (1 - t));
-  }
-  skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyColors, 3));
+  skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(skyGeo.attributes.position.count * 3), 3));
   const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
   scene.add(sky);
+  function paintSky(theme) {
+    const pos = skyGeo.attributes.position;
+    const cols = skyGeo.attributes.color;
+    const top = new THREE.Color(theme.skyTop);
+    const bot = new THREE.Color(theme.skyBottom);
+    for (let i = 0; i < pos.count; i++) {
+      const t = THREE.MathUtils.clamp(pos.getY(i) / 500, 0, 1);
+      cols.setXYZ(i, top.r * t + bot.r * (1 - t), top.g * t + bot.g * (1 - t), top.b * t + bot.b * (1 - t));
+    }
+    cols.needsUpdate = true;
+  }
 
   // --- Infinite Dynamic GPU Terrain: A continuous rolling landscape generated
   // dynamically on the GPU. Centered on the camera and snapped to the grid so
@@ -635,6 +662,7 @@ export function initRender(canvas) {
       uHillsParams1: { value: new THREE.Vector4(hp.a1, hp.f1x, hp.p1x, hp.f1z) },
       uHillsParams2: { value: new THREE.Vector4(hp.p1z, hp.b1, hp.f2x, hp.p2x) },
       uHillsParams3: { value: new THREE.Vector4(hp.f2z, hp.p2z, hp.offset, 0) },
+      uTint: { value: new THREE.Color(1, 1, 1) },
       fogColor: { value: new THREE.Color(SKY_BOTTOM) },
       fogNear: { value: 75 },
       fogFar: { value: 380 },
@@ -704,6 +732,7 @@ export function initRender(canvas) {
       uniform float uTime;
       uniform vec3 uCameraPos;
       uniform vec3 uSunDir;
+      uniform vec3 uTint;
       uniform vec3 fogColor;
       uniform float fogNear;
       uniform float fogFar;
@@ -784,6 +813,7 @@ export function initRender(canvas) {
 
         // Seamless transition from near turf to far meadow
         vec3 baseColor = mix(nearBase, farMeadow, farBlend);
+        baseColor *= uTint; // meadow theme: dawn warms, summit cools
 
         vec3 sunDir = normalize(uSunDir);
         float nDotL = max(0.0, dot(vNormal, sunDir));
@@ -1006,6 +1036,37 @@ export function initRender(canvas) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   petal.traverse((o) => { if (o.isMesh) o.castShadow = true; });
 
+  // --- Meadow theming: the hike's light --------------------------------
+  let themeIndex = 0;
+  function applyTheme(i) {
+    const theme = MEADOW_THEMES[((i % MEADOW_THEMES.length) + MEADOW_THEMES.length) % MEADOW_THEMES.length];
+    themeIndex = MEADOW_THEMES.indexOf(theme);
+    paintSky(theme);
+    scene.fog.color.set(theme.skyBottom);
+    scene.fog.near = theme.fogNear;
+    scene.fog.far = theme.fogFar;
+    // Custom shaders carry their own fog uniforms — sweep the scene once per
+    // theme change and sync every material that has them.
+    scene.traverse((o) => {
+      const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      for (const m of mats) {
+        if (m.uniforms && m.uniforms.fogColor) {
+          m.uniforms.fogColor.value.set(theme.skyBottom);
+          if (m.uniforms.fogNear) m.uniforms.fogNear.value = theme.fogNear;
+          if (m.uniforms.fogFar) m.uniforms.fogFar.value = theme.fogFar;
+        }
+      }
+    });
+    if (terrainMat.uniforms.uTint) {
+      terrainMat.uniforms.uTint.value.setRGB(theme.tint[0], theme.tint[1], theme.tint[2]);
+    }
+    sun.color.set(theme.sunColor);
+    sun.intensity = theme.sunIntensity;
+    ambient.color.set(theme.hemiSky);
+    ambient.groundColor.set(theme.hemiGround);
+  }
+  applyTheme(0); // the day begins in the garden at dawn
+
   // --- Buds (one InstancedMesh per kind, child of world) ---
   let budMeshes = [];
   let stemMeshes = [];
@@ -1163,6 +1224,8 @@ export function initRender(canvas) {
     camera,
     renderer,
     petal,
+    applyTheme,
+    currentThemeIndex() { return themeIndex; },
     flowerStats() {
       return { petalCount: petalColors.length, budKinds: KIND_GEOMETRIES.length };
     },

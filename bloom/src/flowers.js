@@ -48,6 +48,9 @@ export const ROSTER = [
   { id: 'camas', name: 'Camas Lily', tts: 'Camas lily',
     shape: 'bell', petalHex: '#8aa7e8', centerHex: '#5c79c9',
     fact: 'Blue fields like lakes of blue' },
+  { id: 'lupine', name: 'Lupine', tts: 'Lupine',
+    shape: 'bell', petalHex: '#8b7fd6', centerHex: '#eee7fa',
+    fact: 'Paints subalpine slopes purple' },
   { id: 'bellflower', name: 'Bellflower', tts: 'Bellflower',
     shape: 'bell', petalHex: '#9b7fd4', centerHex: '#7a5cb8',
     fact: 'Rings of purple up the stem' },
@@ -99,6 +102,28 @@ export const ROSTER = [
     fact: 'An elegant, exotic bloom' },
 ];
 
+// The day is a hike from a garden at dawn to a summit ridge in afternoon
+// light. Each stage's meadow grows only its own elevation band of flowers,
+// and the stop offers are drawn from the same pool — what you see is what
+// you can pick. Fifteen ids each = five stops x three offers, no repeats.
+export const MEADOW_POOLS = [
+  [ // Stage 1 — Garden at Dawn: familiar faces, low and friendly
+    'tulip', 'rose', 'peony', 'daffodil', 'oxeye-daisy', 'white-clover',
+    'california-poppy', 'cosmos', 'buttercup', 'marigold', 'jasmine',
+    'chrysanthemum', 'lavender', 'poppy', 'sunflower',
+  ],
+  [ // Stage 2 — Valley Meadow: prairie classics in morning light
+    'camas', 'columbine', 'blackeyed-susan', 'sunflower', 'bellflower',
+    'poppy', 'oregon-grape', 'lavender', 'white-clover', 'dandelion',
+    'cosmos', 'buttercup', 'california-poppy', 'oxeye-daisy', 'marigold',
+  ],
+  [ // Stage 3 — Summit Ridge: thin air — lupines and hardy travellers
+    'lupine', 'foxglove', 'columbine', 'bellflower', 'camas', 'oregon-grape',
+    'oxeye-daisy', 'buttercup', 'white-clover', 'dandelion', 'blackeyed-susan',
+    'cosmos', 'lavender', 'poppy', 'california-poppy',
+  ],
+];
+
 export function flowerById(id) {
   return ROSTER.find((f) => f.id === id) || null;
 }
@@ -118,7 +143,7 @@ export function maxStopsCovered() {
 // Deterministically pick the flowers offered at one stop. Each variant is
 // offered at most once per run: the whole roster is shuffled once (seeded),
 // and stop N reads its own slice, so offers never repeat across stops.
-export function sampleChoices(seed, stopIndex) {
+export function sampleChoices(seed, stopIndex, poolIds) {
   // murmur3-style finalizer so nearby seeds never correlate.
   const mix = (x) => {
     x |= 0;
@@ -127,7 +152,7 @@ export function sampleChoices(seed, stopIndex) {
     return (x ^ (x >>> 16)) >>> 0;
   };
   const rng = mulberry32(mix(seed >>> 0));
-  const pool = ROSTER.map((f) => f.id);
+  let pool = (Array.isArray(poolIds) && poolIds.length ? [...poolIds] : ROSTER.map((f) => f.id));
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];

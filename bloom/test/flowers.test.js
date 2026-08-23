@@ -8,12 +8,15 @@ import {
   sampleChoices,
   segmentMood,
   bouquetTitle,
+  MEADOW_POOLS,
 } from '../src/flowers.js';
+import { moodKeyForHex } from '../src/poem.js';
+import { TOTAL_STOPS, TOTAL_STAGES } from '../src/run.js';
 
 const SHAPES = new Set(['daisy', 'cup', 'bell', 'puff']);
 
 test('roster covers a 5-stop run with room for variety', () => {
-  assert.equal(ROSTER.length, 25, `expected 25 variants, have ${ROSTER.length}`);
+  assert.equal(ROSTER.length, 26, `expected 26 variants, have ${ROSTER.length}`);
   assert.ok(maxStopsCovered() >= 5, 'roster must cover five stops');
 });
 
@@ -126,4 +129,28 @@ test('bouquetTitle describes mixes', () => {
 test('bouquetTitle tolerates junk input', () => {
   assert.equal(bouquetTitle([]), 'A wildflower bouquet');
   assert.equal(bouquetTitle(null), 'A wildflower bouquet');
+});
+
+test('meadow pools: every id is real, each covers five stops', () => {
+  assert.equal(MEADOW_POOLS.length, TOTAL_STAGES);
+  for (const pool of MEADOW_POOLS) {
+    assert.ok(pool.length >= TOTAL_STOPS * choicesPerStop(),
+      `pool too small (${pool.length})`);
+    for (const id of pool) assert.ok(flowerById(id), `unknown flower ${id}`);
+  }
+});
+
+test('sampleChoices honours a themed pool', () => {
+  const pool = MEADOW_POOLS[2]; // summit ridge
+  for (let stop = 0; stop < TOTAL_STOPS; stop++) {
+    const picks = sampleChoices(1234, stop, pool);
+    assert.equal(picks.length, choicesPerStop());
+    for (const id of picks) assert.ok(pool.includes(id), `${id} leaked from pool`);
+  }
+});
+
+test('lupine joined the roster with a valid mood bucket', () => {
+  const f = flowerById('lupine');
+  assert.ok(f, 'lupine missing');
+  assert.notEqual(moodKeyForHex(f.petalHex), null);
 });

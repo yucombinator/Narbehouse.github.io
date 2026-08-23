@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { initRender, resize } from './render.js?v=19';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=19';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS } from './trail.js?v=3';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
-import { sampleChoices, flowerById, bouquetTitle, segmentMood } from './flowers.js';
+import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS } from './flowers.js';
 import { TOTAL_STOPS, TOTAL_STAGES, createRun, reachStop, commitPick, beginCeremony, finishCeremony } from './run.js';
 import { loadBouquets, addBouquet, resetBouquets } from './gallery.js';
 import { composePostcard } from './poem.js?v=2';
@@ -119,7 +119,7 @@ const COLLECT_RADIUS = 0.8; // base horizontal collect distance
 const MAX_SIZE = 2.5;
 
 let meadowSeed = 42;
-let trail = generateTrail({ seed: meadowSeed });
+let trail = generateTrail({ seed: meadowSeed, species: MEADOW_POOLS[0] });
 let petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0, y: trail.pointAt(trail.zStart).y };
 
 // Invariant: the petal never dips below the terrain. Applied every frame so
@@ -269,7 +269,7 @@ window.__petalGame = {
     render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
-    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active };
+    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active, theme: render?.currentThemeIndex?.() ?? -1 };
   },
   bud(i) {
     return trail.buds[i]
@@ -561,7 +561,7 @@ function focusChoice(k, silent = false) {
 function openStop() {
   if (isStopOpen || run.phase !== 'FLYING') return;
   run = reachStop(run);
-  stopOffer = sampleChoices(run.seed, run.stopsDone); // slice for this stop
+  stopOffer = sampleChoices(run.seed, run.stopsDone, stagePool()); // slice for this stop
   stopFocus = 0;
   input.left = false;
   input.right = false;
@@ -626,6 +626,10 @@ const btnRest = document.getElementById('btnRest');
 let lastNarration = null;
 
 let stageIndex = 0;
+// The hike: each meadow grows (and offers) only its elevation band's flowers.
+function stagePool(i = stageIndex) {
+  return MEADOW_POOLS[((i % MEADOW_POOLS.length) + MEADOW_POOLS.length) % MEADOW_POOLS.length];
+}
 let sessionCards = []; // [{ picks, seed, card }] — cleared only on page exit
 let scanItems = [];
 let scanFocus = 0;
@@ -1068,7 +1072,7 @@ function addStopSpill(t) {
   const extra = [];
   for (let i = 0; i < TOTAL_STOPS; i++) {
     const rng = mulberry32(mix32((meadowSeed ^ Math.imul(i + 1, 2654435761)) >>> 0));
-    const offers = sampleChoices(meadowSeed, i).map((id) => flowerById(id));
+    const offers = sampleChoices(meadowSeed, i, stagePool()).map((id) => flowerById(id));
     for (let k = 0; k < 8; k++) {
       const z = stopZs[i] + 4 + rng() * 14;
       const x = t.pointAt(z).x + (rng() - 0.5) * 6.5;
@@ -1107,7 +1111,7 @@ let runSeedCounter = 42;
 
 function beginRun(seed) {
   meadowSeed = seed >>> 0;
-  trail = generateTrail({ seed: meadowSeed });
+  trail = generateTrail({ seed: meadowSeed, species: stagePool() });
   stopZs = computeStopZs(trail);
   addStopSpill(trail);
   refreshStopMarkers();
@@ -1125,6 +1129,12 @@ function beginRun(seed) {
   saveProgress();
   updateHud();
   tintMeadowSegments();
+  // The hike's light shifts with each meadow, and its name is announced —
+  // dawn garden, morning valley, afternoon summit.
+  render?.applyTheme?.(stageIndex);
+  const theme = MEADOW_THEMES[stageIndex % MEADOW_THEMES.length];
+  toast(theme.line);
+  speak(theme.line);
 }
 
 // --- Debug jumps (?debug=stopN | ceremony) -------------------------------
@@ -1136,13 +1146,13 @@ function applyDebugJump() {
   if (m) {
     const target = parseInt(m[1], 10);
     for (let i = 0; i < target - 1; i++) {
-      const offer = sampleChoices(run.seed, i);
+      const offer = sampleChoices(run.seed, i, stagePool());
       run = commitPick(reachStop(run), offer[0], offer);
     }
     petal.z = stopZs[target - 1] + 7; // cross the threshold within seconds
   } else if (DEBUG_FLAG === 'ceremony') {
     for (let i = 0; i < TOTAL_STOPS; i++) {
-      const offer = sampleChoices(run.seed, i);
+      const offer = sampleChoices(run.seed, i, stagePool());
       run = commitPick(reachStop(run), offer[0], offer);
     }
     petal.z = trail.zEnd + 12; // already inside the ceremony trigger zone
