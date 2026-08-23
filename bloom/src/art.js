@@ -32,6 +32,45 @@ export function flowerHeadSvg(f, r = 15, extra = '') {
       out += `<circle cx="${dx - r * 0.08}" cy="${dy - r * 0.08}" r="${r * 0.1}" fill="rgba(255,255,255,0.35)"/>`;
     }
     out += `<circle cx="0" cy="0" r="${r * 0.34}" fill="${c}"/>`;
+  } else if (f.shape === 'rosette') {
+    // Rose: stepped rings spiralling inward.
+    for (let i = 0; i < 6; i++) {
+      const a = Math.round((i / 6) * 360);
+      out += `<ellipse cx="0" cy="${-r * 0.58}" rx="${r * 0.36}" ry="${r * 0.56}" fill="${p}" stroke="${shade}" stroke-width="0.5" transform="rotate(${a})"/>`;
+    }
+    for (let i = 0; i < 4; i++) {
+      const a = Math.round((i / 4) * 360 + 45);
+      out += `<ellipse cx="0" cy="${-r * 0.28}" rx="${r * 0.26}" ry="${r * 0.34}" fill="${p}" stroke="${shade}" stroke-width="0.5" transform="rotate(${a})"/>`;
+    }
+    out += `<circle cx="0" cy="0" r="${r * 0.2}" fill="${c}"/>`;
+    out += `<circle cx="${-r * 0.05}" cy="${-r * 0.06}" r="${r * 0.09}" fill="rgba(0,0,0,0.18)"/>`;
+  } else if (f.shape === 'star') {
+    // Open tulip: pointed petals flaring toward the sun.
+    for (let i = 0; i < 6; i++) {
+      const a = Math.round((i / 6) * 360);
+      out += `<ellipse cx="0" cy="${-r * 0.6}" rx="${r * 0.26}" ry="${r * 0.62}" fill="${p}" stroke="${shade}" stroke-width="0.5" transform="rotate(${a})"/>`;
+    }
+    out += `<circle cx="0" cy="0" r="${r * 0.26}" fill="${c}"/>`;
+  } else if (f.shape === 'wild') {
+    // Wild rose: one open whorl of broad petals with showy stamens.
+    for (let i = 0; i < 5; i++) {
+      const a = Math.round((i / 5) * 360);
+      out += `<ellipse cx="0" cy="${-r * 0.55}" rx="${r * 0.42}" ry="${r * 0.55}" fill="${p}" stroke="${shade}" stroke-width="0.5" transform="rotate(${a})"/>`;
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      out += `<circle cx="${(Math.cos(a) * r * 0.22).toFixed(1)}" cy="${(Math.sin(a) * r * 0.22).toFixed(1)}" r="${r * 0.07}" fill="${c}"/>`;
+    }
+    out += `<circle cx="0" cy="0" r="${r * 0.12}" fill="${c}"/>`;
+  } else if (f.shape === 'spike') {
+    // Lupine: a tall spire of small pea-blooms, tight at the crown.
+    for (let i = 0; i < 6; i++) {
+      const t = i / 5;
+      const y = r * (0.85 - t * 1.7);
+      const rr = r * (0.3 - t * 0.12);
+      out += `<circle cx="${(i % 2 ? 1 : -1) * r * 0.09}" cy="${y.toFixed(1)}" r="${rr.toFixed(1)}" fill="${p}" stroke="${shade}" stroke-width="0.5"/>`;
+    }
+    out += `<circle cx="0" cy="${-r * 0.92}" r="${r * 0.12}" fill="${c}"/>`;
   } else {
     // daisy: flat ray of petals around a round centre.
     const n = 6;
@@ -43,6 +82,50 @@ export function flowerHeadSvg(f, r = 15, extra = '') {
     out += `<circle cx="${-r * 0.12}" cy="${-r * 0.12}" r="${r * 0.1}" fill="rgba(255,255,255,0.4)"/>`;
   }
   return `<g ${extra}>${out}</g>`;
+}
+
+// Growth-pattern shorthand for the chooser cards: how many blooms a stem
+// carries and how large each reads. `col` stacks small heads up a spire
+// (foxglove, lupine, camas); `n` scatters a cluster; default is one bloom.
+const CARD_LOOK = {
+  cosmos: { n: 3, s: 0.62 },
+  lantana: { n: 5, s: 0.42 },
+  marigold: { n: 3, s: 0.66 },
+  'white-clover': { n: 3, s: 0.55 },
+  jasmine: { n: 3, s: 0.5 },
+  buttercup: { n: 3, s: 0.7 },
+  sunflower: { n: 1, s: 1.3 },
+  peony: { n: 1, s: 1.2 },
+  rose: { n: 1, s: 1.12 },
+  chrysanthemum: { n: 1, s: 1.15 },
+  dandelion: { n: 1, s: 0.9 },
+  orchid: { n: 1, s: 0.95 },
+  foxglove: { col: 4, s: 0.5 },
+  camas: { col: 3, s: 0.55 },
+  lavender: { col: 4, s: 0.4 },
+  lupine: { col: 5, s: 0.42 },
+  bellflower: { col: 2, s: 0.72 },
+};
+
+export function flowerCardSvg(f, px = 80) {
+  const look = CARD_LOOK[f.id] || { n: 1, s: 1 };
+  const parts = [];
+  if (look.col) {
+    const span = 54;
+    for (let i = 0; i < look.col; i++) {
+      const t = look.col === 1 ? 0.5 : i / (look.col - 1);
+      const y = 40 + span / 2 - t * span;
+      parts.push(`<g transform="translate(40 ${y.toFixed(1)}) scale(${look.s})">${flowerHeadSvg(f, 15)}</g>`);
+    }
+  } else if (look.n > 1) {
+    for (let i = 0; i < look.n; i++) {
+      const a = (i / look.n) * Math.PI * 2 - Math.PI / 2;
+      parts.push(`<g transform="translate(${(40 + Math.cos(a) * 13).toFixed(1)} ${(40 + Math.sin(a) * 13).toFixed(1)}) scale(${look.s})">${flowerHeadSvg(f, 15)}</g>`);
+    }
+  } else {
+    parts.push(`<g transform="translate(40 40) scale(${look.s})">${flowerHeadSvg(f, 15)}</g>`);
+  }
+  return `<svg viewBox="0 0 80 80" width="${px}" height="${px}" aria-hidden="true">${parts.join('')}</svg>`;
 }
 
 // --- Wicker basket --------------------------------------------------------

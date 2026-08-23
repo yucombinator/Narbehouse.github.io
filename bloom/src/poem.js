@@ -185,20 +185,47 @@ export function meadowNumber(seed) {
   return 101 + (x % 899);
 }
 
+// Time-of-day connotations some lines carry. The haiku never HAS to mention
+// time — but when a line does, it must match the meadow's hour on the hike:
+// stage 0 is dawn, stage 1 mid-morning, stage 2 afternoon. Night words have
+// no stage and are always filtered out.
+const TIME_BUCKETS = [
+  { re: /\bdawn\b|\bsunrise\b|\bdaybreak\b|first light/i, key: 'dawn' },
+  { re: /\bmorning\b/i, key: 'morning' },
+  { re: /\bnoon\b|\bmidday\b/i, key: 'noon' },
+  { re: /\bafternoon\b/i, key: 'afternoon' },
+  { re: /\bdusk\b|\bsunset\b|\btwilight\b|\bevening\b|\bnight\b|\bmidnight\b|\bmoon\b|\bstarlight\b|\bstars\b/i, key: 'night' },
+];
+const STAGE_TIMES = [['dawn'], ['morning'], ['afternoon', 'noon']];
+
+function lineTimeOk(line, allowed) {
+  const hits = TIME_BUCKETS.filter((b) => b.re.test(line)).map((b) => b.key);
+  if (!hits.length) return true; // timeless lines fit any hour
+  return hits.every((k) => allowed.includes(k));
+}
+
 // Compose everything the postcard view needs. The haiku is assembled from
 // the family's three banks with independent seeded streams, so a family
 // yields open.length × mid.length × close.length distinct poems.
-export function composePostcard({ picks, seed, flowerById }) {
+export function composePostcard({ picks, seed, flowerById, stage = null }) {
   const dom = dominantPick(picks, flowerById);
   const moodKey = dom ? moodKeyForHex(dom.petalHex) : 'cream';
   const bank = BANKS[moodKey];
   const sig = mix32(mix32(seed >>> 0) ^ picksSignature(Array.isArray(picks) ? picks : []));
   const s1 = mix32(sig ^ 0x9e3779b9);
   const s2 = mix32(sig ^ 0x85ebca6b);
+  const allowed = stage === null
+    ? null
+    : STAGE_TIMES[((stage % STAGE_TIMES.length) + STAGE_TIMES.length) % STAGE_TIMES.length];
+  const from = (arr, i) => {
+    const fitting = allowed ? arr.filter((l) => lineTimeOk(l, allowed)) : arr;
+    const pool = fitting.length ? fitting : arr; // safety: never empty-handed
+    return pool[i % pool.length];
+  };
   const lines = [
-    bank.open[s1 % bank.open.length],
-    bank.mid[s2 % bank.mid.length],
-    bank.close[s1 % bank.close.length],
+    from(bank.open, s1),
+    from(bank.mid, s2),
+    from(bank.close, s1),
   ];
   return {
     number: meadowNumber(seed),

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FLOWER_VARIANTS } from './trail.js';
+import { FLOWER_VARIANTS } from './trail.js?v=4';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=9';
+import { createGrass } from './grass.js?v=10';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -13,10 +13,10 @@ export const SKY_BOTTOM = 0xc8e6ff;
 // dawn garden, mid-morning valley, afternoon summit ridge.
 export const MEADOW_THEMES = [
   {
-    name: 'Garden at Dawn', line: 'Dawn. A garden wakes below.',
-    skyTop: 0x6f93c8, skyBottom: 0xffd9b4, fogNear: 58, fogFar: 300,
-    sunColor: 0xffd9a8, sunIntensity: 1.25,
-    hemiSky: 0xffe4c4, hemiGround: 0x7a9e5a, tint: [1.07, 0.99, 0.92],
+    name: 'Ranger Station Garden', line: 'Dawn. The ranger\'s garden wakes by the trailhead.',
+    skyTop: 0x7fa3d4, skyBottom: 0xffeadb, fogNear: 72, fogFar: 340,
+    sunColor: 0xffe2ba, sunIntensity: 1.3,
+    hemiSky: 0xf2e4d2, hemiGround: 0x7a9e5a, tint: [1.05, 1.0, 0.96],
   },
   {
     name: 'Valley Meadow', line: 'Mid-morning. The valley opens.',
@@ -376,8 +376,10 @@ function petalTint(seed) {
 // aThick (thin translucent tip/edges, thick base), aAo (ambient occlusion at
 // the base where the petal meets the centre).
 function curvedPetal(len, wide, tint = 0) {
-  const wSeg = 7;
-  const lSeg = 9;
+  // 3x4 segments keeps the curve readable at play distances with a quarter
+  // of the triangles — flowers are the densest thing in the scene.
+  const wSeg = 3;
+  const lSeg = 4;
   const g = new THREE.PlaneGeometry(len, wide, wSeg, lSeg);
   // PlaneGeometry lies in XY: x = length (base -len/2 .. tip +len/2), y = width.
   const pos = g.attributes.position;
@@ -486,6 +488,10 @@ const SHAPE_LAYERS = {
   bell: [ // nodding bell: narrow petals held high
     { tilt: 1.25, r: 0.95, narrow: 0.62 },
     { tilt: 1.0, r: 0.7, off: 0.5, narrow: 0.62, z: -0.05 },
+  ],
+  spike: [ // lupine spire: tight upright tiers climbing a stem
+    { tilt: 1.15, r: 0.6, narrow: 0.55 },
+    { tilt: 1.35, r: 0.4, narrow: 0.5, off: 0.5, z: -0.05 },
   ],
   puff: [ // soft pompom: three short rounded tiers
     { tilt: 0.5, r: 0.95 },
@@ -622,8 +628,11 @@ function lerp(a, b, t) {
 export function initRender(canvas) {
   // preserveDrawingBuffer stays off: keeping it forced a full framebuffer
   // copy-back every frame — one of the heaviest avoidable costs.
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  // Shadows follow a smoothly-moving sun; refreshing the map at ~20Hz is
+  // imperceptible and saves a full caster pass on the other frames.
+  renderer.shadowMap.autoUpdate = false;
   renderer.setSize(window.innerWidth, window.innerHeight);
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(SKY_BOTTOM, 75, 380);
@@ -651,7 +660,7 @@ export function initRender(canvas) {
   // dynamically on the GPU. Centered on the camera and snapped to the grid so
   // it extends infinitely in all directions with zero seams or disappearing edges.
   const hp = HILLS.params;
-  const terrainGeo = new THREE.PlaneGeometry(900, 900, 160, 160);
+  const terrainGeo = new THREE.PlaneGeometry(900, 900, 128, 128);
   terrainGeo.rotateX(-Math.PI / 2);
 
   const terrainMat = new THREE.ShaderMaterial({
@@ -920,6 +929,9 @@ export function initRender(canvas) {
   let nowSec = 0; // game clock, cached from frame() for eases
   let petalGeometry = PETAL_GEO; // upgraded to the CC-BY model when loaded
   let windIntensity = 0; // 0 = calm, 1 = full wind rush (ramps with steering)
+  let boostLevel = 0;    // eased Space-burst level (0..1) — fov lift only
+  let boostTarget = 0;
+  let frameNo = 0;
   const trailHistory = []; // {x,y,z} recent flight positions for the petal trail
 
   // Add ONE new petal (ease-in) without disturbing the existing swarm.
@@ -1226,6 +1238,7 @@ export function initRender(canvas) {
     petal,
     applyTheme,
     currentThemeIndex() { return themeIndex; },
+    setBoost(v) { boostTarget = Math.max(0, Math.min(1, v || 0)); },
     flowerStats() {
       return { petalCount: petalColors.length, budKinds: KIND_GEOMETRIES.length };
     },
@@ -1611,8 +1624,11 @@ export function initRender(canvas) {
       // so cruising never feels locked on rails. Periods are long (20-30s)
       // and amplitudes tiny — felt more than seen.
       camera.rotation.z += Math.sin(timeSec * 0.29) * 0.03 + Math.sin(timeSec * 0.83) * 0.008;
-      camera.fov = 60 + Math.sin(timeSec * 0.21) * 1.3;
+      boostLevel += (boostTarget - boostLevel) * Math.min(1, dt * 3);
+      camera.fov = 60 + Math.sin(timeSec * 0.21) * 1.3 + boostLevel * 5;
       camera.updateProjectionMatrix();
+      // Shadow map refreshes at ~20Hz (see shadowMap.autoUpdate above).
+      if ((frameNo++ % 3) === 0) renderer.shadowMap.needsUpdate = true;
 
       // Proximity: petals near the camera fade toward translucent, graduating
       // smoothly across the band. The default POV puts ring petals ~15 units

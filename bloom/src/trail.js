@@ -1,7 +1,7 @@
 // Pure random trail generation. No three.js, DOM, or WebAudio — unit-tested.
 import { mulberry32 } from './rand.js';
 import { HILLS } from './hill.js';
-import { flowerById } from './flowers.js';
+import { flowerById } from './flowers.js?v=4';
 
 // Re-export for tests and callers that import the PRNG from here.
 export { mulberry32 };

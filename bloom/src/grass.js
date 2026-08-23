@@ -89,9 +89,9 @@ export function buildGrassClumpGeometry() {
 export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   const hp = hillsParams;
   const TIER1_COUNT = 18000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
-  const TIER2_COUNT = 18000; // Mid domain (180m x 180m) - dense rolling meadows (~1.3m spacing)
-  const TIER3_COUNT = 8000;  // Far ring (260m box, outer 88-130m) - sparse, fogged, hides the domain edge
-  const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 44,000 clumps
+  const TIER2_COUNT = 12000; // Mid domain (180m x 180m) - dense rolling meadows (~1.3m spacing)
+  const TIER3_COUNT = 5000;  // Far ring (260m box, outer 88-130m) - sparse, fogged, hides the domain edge
+  const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 35,000 clumps
 
   const bladeBaseGeo = buildGrassClumpGeometry();
   const grassGeo = new THREE.InstancedBufferGeometry();

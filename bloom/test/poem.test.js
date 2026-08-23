@@ -82,3 +82,25 @@ test('assembled haiku vary across playthroughs but stay in-family', () => {
   // 6 opens x 5 mids x 4 closes = 120 possible sun poems; demand real spread.
   assert.ok(narrations.size >= 12, `expected wide variety, got ${narrations.size}`);
 });
+
+test('haiku time-of-day follows the hike stage when it mentions time at all', () => {
+  const NIGHT = /dusk|sunset|twilight|evening|night|moon|starlight|\bstars\b/i;
+  const picks = ['poppy', 'tulip', 'cosmos', 'foxglove', 'camas'];
+  for (let seed = 1; seed < 400; seed += 7) {
+    for (let stage = 0; stage < 3; stage++) {
+      const card = composePostcard({ picks: picks.slice(stage % 3), seed, flowerById, stage });
+      for (const line of card.lines) {
+        assert.ok(!NIGHT.test(line), `night word leaked at stage ${stage}: ${line}`);
+      }
+    }
+  }
+  // stage 0 (dawn) never claims afternoon; stage 2 (afternoon) never dawn
+  for (let seed = 0; seed < 300; seed += 11) {
+    for (const line of composePostcard({ picks, seed, flowerById, stage: 0 }).lines) {
+      assert.ok(!/\bafternoon\b|\bnoon\b|\bmidday\b/i.test(line), `afternoon at dawn: ${line}`);
+    }
+    for (const line of composePostcard({ picks, seed, flowerById, stage: 2 }).lines) {
+      assert.ok(!/\bdawn\b|\bsunrise\b|\bmorning\b/i.test(line), `dawn word at summit: ${line}`);
+    }
+  }
+});

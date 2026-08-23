@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=19';
-import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS } from './trail.js?v=3';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=20';
+import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS } from './trail.js?v=4';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
-import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS } from './flowers.js';
+import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS } from './flowers.js?v=4';
 import { TOTAL_STOPS, TOTAL_STAGES, createRun, reachStop, commitPick, beginCeremony, finishCeremony } from './run.js';
 import { loadBouquets, addBouquet, resetBouquets } from './gallery.js';
-import { composePostcard } from './poem.js?v=2';
-import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg } from './art.js';
+import { composePostcard } from './poem.js?v=3';
+import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg, flowerCardSvg } from './art.js?v=2';
 import { mulberry32 } from './rand.js';
 import { noteFor } from './notes.js';
 import { initAudio } from './audio.js';
@@ -41,6 +41,10 @@ window.addEventListener('unhandledrejection', (e) => {
 // --- Input: two buttons, LEFT and RIGHT -------------------------------
 let isTitleOpen = true; // Space/Enter start the game while the title is up
 const input = { left: false, right: false };
+// Space burst: an optional breath of speed. Never required — the wind carries
+// you at its own pace unless you ask for a little more sky.
+let boostHeld = false;
+let boostLevel = 0;
 
 function bindHold(el, key) {
   if (!el) return;
@@ -58,7 +62,7 @@ function bindHold(el, key) {
 // suggested the game wanted deliberate steering, and it doesn't.
 
 function keyIsLeft(e) {
-  return e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A' || e.key === ' ';
+  return e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A';
 }
 function keyIsRight(e) {
   return e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D' || e.key === 'Enter';
@@ -80,8 +84,14 @@ window.addEventListener('keydown', (e) => {
 		input.right = true;
 		e.preventDefault();
 	}
+	// Holding Space rides a gentle burst of wind — flight only, never needed.
+	if (e.key === ' ' && started && run.phase === 'FLYING') {
+		if (!e.repeat) boostHeld = true;
+		e.preventDefault();
+	}
 });
 window.addEventListener('keyup', (e) => {
+  if (e.key === ' ') boostHeld = false;
   if (keyIsRight(e)) {
     clearTimeout(holdTimer);
     holdTimer = null;
@@ -269,7 +279,7 @@ window.__petalGame = {
     render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
-    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active, theme: render?.currentThemeIndex?.() ?? -1 };
+    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel };
   },
   bud(i) {
     return trail.buds[i]
@@ -324,8 +334,10 @@ function updateHud() {
         [0, 72, 144, 216, 288].map((a) => `<ellipse cx="10" cy="4.6" rx="3.1" ry="4.2" transform="rotate(${a} 10 10)"/>`).join('') +
         `</g><circle cx="10" cy="10" r="2.5" fill="${done ? '#ffd76e' : 'rgba(90,42,74,0.35)'}"/></svg>`;
     }
+    // The hike's scene name lives top-left all day: where you are, always.
+    const scene = MEADOW_THEMES[stageIndex % MEADOW_THEMES.length];
     hud.innerHTML =
-      `<span class="hudTag">Meadow ${Math.min(stageIndex + 1, TOTAL_STAGES)} of ${TOTAL_STAGES}</span>` +
+      `<span class="hudTag">${scene.name} · ${Math.min(stageIndex + 1, TOTAL_STAGES)} of ${TOTAL_STAGES}</span>` +
       `<span class="hudDots" role="img" aria-label="flowers gathered: ${run.stopsDone} of ${TOTAL_STOPS}" title="flowers gathered: ${run.stopsDone} of ${TOTAL_STOPS}">${dots}</span>`;
   }
 }
@@ -508,18 +520,10 @@ function toast(msg) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
 }
 
-// Stylized SVG flower for the chooser cards and basket slots.
+// Stylized SVG for the chooser cards: true flower shape + growth-pattern
+// size (clusters, spires, big singles) via art.js flowerCardSvg.
 function flowerSvg(f, px = 80) {
-  const petals = f.shape === 'puff' ? 8 : f.shape === 'cup' ? 4 : 6;
-  let out = '';
-  for (let i = 0; i < petals; i++) {
-    const a = Math.round((i / petals) * 360);
-    const cy = f.shape === 'cup' ? 28 : 22;
-    out += `<ellipse cx="40" cy="${cy}" rx="10" ry="16" fill="${f.petalHex}" transform="rotate(${a} 40 40)"/>`;
-  }
-  const r = f.shape === 'puff' ? 14 : 11;
-  out += `<circle cx="40" cy="40" r="${r}" fill="${f.centerHex}" stroke="rgba(0,0,0,0.15)" stroke-width="1"/>`;
-  return `<svg viewBox="0 0 80 80" width="${px}" height="${px}" aria-hidden="true">${out}</svg>`;
+  return flowerCardSvg(f, px);
 }
 
 // --- Basket HUD ----------------------------------------------------------
@@ -726,7 +730,7 @@ function startMailing() {
     audio?.chime?.(660); // gentle send-off chime
     speak('In the mail!');
     cerPos.textContent = 'Postcard mailed ✓';
-    mailTimer = setTimeout(proceedAfterSend, 1100); // let the moment land
+    mailTimer = setTimeout(proceedAfterSend, 1800); // let the moment land
   }, 1500);
 }
 
@@ -1017,7 +1021,7 @@ function openCeremony() {
   try {
     if (storage) addBouquet(storage, run.bouquet);
   } catch { /* gallery unavailable */ }
-  const card = composePostcard({ picks: run.picks, seed: run.seed, flowerById });
+  const card = composePostcard({ picks: run.picks, seed: run.seed, flowerById, stage: stageIndex });
   const rec = { picks: [...run.picks], seed: run.seed, card };
   sessionCards.push(rec);
   stageIndex += 1; // the postcard is stamped: this stage counts as played
@@ -1241,7 +1245,10 @@ function loop() {
   let gustLift = 0;
   if (!frozen) {
     gustLift = gustUpdate(dt);
-    const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor * (gust.active ? 1.06 : 1) }, input.left, input.right);
+    // Space burst: eased so engaging/release reads as wind strength, not a gear.
+    boostLevel += ((boostHeld ? 1 : 0) - boostLevel) * Math.min(1, dt * 3);
+    render?.setBoost?.(boostLevel);
+    const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor * (gust.active ? 1.06 : 1) * (1 + 0.38 * boostLevel) }, input.left, input.right);
     petal = { x: m.x + wind.swayVx * dt, z: m.z, y: petal.y + wind.bobY * dt, bank: m.bank };
     // The gust adds its lift to the altitude target, so the existing ease
     // turns it into one long breath of height instead of a jolt.

@@ -49,7 +49,7 @@ export const ROSTER = [
     shape: 'bell', petalHex: '#8aa7e8', centerHex: '#5c79c9',
     fact: 'Blue fields like lakes of blue' },
   { id: 'lupine', name: 'Lupine', tts: 'Lupine',
-    shape: 'bell', petalHex: '#8b7fd6', centerHex: '#eee7fa',
+    shape: 'spike', petalHex: '#8b7fd6', centerHex: '#eee7fa',
     fact: 'Paints subalpine slopes purple' },
   { id: 'bellflower', name: 'Bellflower', tts: 'Bellflower',
     shape: 'bell', petalHex: '#9b7fd4', centerHex: '#7a5cb8',
