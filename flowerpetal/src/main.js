@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { initRender, resize } from './render.js';
-import { generateTrail, CRUISE_SPEED } from './trail.js';
+import { generateTrail, CRUISE_SPEED } from './trail.js?v=2';
 import { advance } from './steer.js';
 import { collectBud, tintFor } from './growth.js';
 import { noteFor } from './notes.js';

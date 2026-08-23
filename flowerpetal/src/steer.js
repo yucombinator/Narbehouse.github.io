@@ -1,4 +1,4 @@
-import { CRUISE_SPEED, MAX_BANK_DEG } from './trail.js';
+import { CRUISE_SPEED, MAX_BANK_DEG } from './trail.js?v=2';
 
 export const MAX_BANK_RAD = (MAX_BANK_DEG * Math.PI) / 180;
 

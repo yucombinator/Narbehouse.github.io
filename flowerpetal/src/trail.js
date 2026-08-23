@@ -16,6 +16,15 @@ export const PALETTE = [
   0xffd1dc, 0xb3e1ff, 0xc7f0c7, 0xfff3b0, 0xdcc8ff, 0xffc9a8,
 ];
 
+// Distinct flower varieties: petal count + a crown-of-petals flag so the
+// meadow reads as different kinds of bloom, not one clone repeated.
+export const FLOWER_KINDS = [
+  { petals: 5, spread: 1.0, bigCenter: 0.3 },   // classic rose
+  { petals: 6, spread: 1.15, bigCenter: 0.24 }, // daisy
+  { petals: 4, spread: 0.95, bigCenter: 0.22 }, // star
+  { petals: 8, spread: 1.35, bigCenter: 0.2 },  // airy cluster
+];
+
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -47,8 +56,10 @@ export function generateTrail({ seed, length = 400 }) {
   // Altitude: gentle, independent low-frequency sines (defined before curveY uses them).
   const altFreqs = [0.02 + rand() * 0.02, 0.035 + rand() * 0.02];
   const altPhases = [rand() * Math.PI * 2, rand() * Math.PI * 2];
-  const altAmp1 = 1.0 + rand() * 1.2;
-  const altAmp2 = 0.6 + rand() * 0.9;
+  // Guided vertical flight: the path climbs and dips so the player is
+  // "flying in the air", not hovering at one height. Amplitudes a few units.
+  const altAmp1 = 2.0 + rand() * 1.6;
+  const altAmp2 = 1.0 + rand() * 1.2;
 
   const curveX = (z) => amps.reduce((s, a, i) => s + a * Math.sin(freqs[i] * z + phases[i]), 0);
   const curveY = (z) =>
@@ -70,11 +81,14 @@ export function generateTrail({ seed, length = 400 }) {
       const bx = cx + Math.cos(a) * r;
       const bz = cz + Math.sin(a) * r;
       const by = curveY(bz) + (rand() - 0.5) * 1.6;
+      const kind = Math.floor(rand() * FLOWER_KINDS.length);
       buds.push({
         x: bx,
         y: by,
         z: bz,
         colorHex: PALETTE[Math.floor(rand() * PALETTE.length)],
+        kind,
+        kindIndex: 0, // filled below by the per-kind counter
         cluster,
       });
     }
@@ -82,6 +96,11 @@ export function generateTrail({ seed, length = 400 }) {
     cluster++;
   }
   buds.sort((a, b) => b.z - a.z); // descending z = toward the player's flight
+  // Assign a per-kind order so each kind's InstancedMesh indices line up.
+  const kindCounts = Array.from({ length: FLOWER_KINDS.length }, () => 0);
+  for (const b of buds) {
+    b.kindIndex = kindCounts[b.kind]++;
+  }
   const mother = { x: curveX(zEnd), y: curveY(zEnd), z: zEnd };
 
   // Analytic worst-case second derivative (true upper bound).

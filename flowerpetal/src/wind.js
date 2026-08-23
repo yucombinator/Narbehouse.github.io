@@ -1,7 +1,7 @@
 // Pure wind model: gentle, bounded wander that makes flight feel alive.
 // Deterministic per (t, seed) — same arguments, same wind. No three/DOM/audio.
 
-import { mulberry32 } from './trail.js';
+import { mulberry32 } from './trail.js?v=2';
 
 export const WIND_CFG = {
   latAmp: 1.0,     // max lateral wind speed contribution (u/s), first wave

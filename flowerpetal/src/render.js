@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { FLOWER_KINDS } from './trail.js?v=2';
 
 export const SKY_TOP = 0x9fd8ff;
 export const SKY_BOTTOM = 0xffe3f0;
 
-// A radially symmetric 5-petal flower lying in the XY plane (faces the camera).
-// Used for trail buds and the mother bloom.
-function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5 } = {}) {
+// A radially symmetric flower lying in the XY plane (faces the camera).
+// `spread` scales how far petals sit from the center, giving each kind its
+// own silhouette.
+function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5, spread = 1.0 } = {}) {
   const parts = [];
   const petalGeo = new THREE.SphereGeometry(petalRadius, 8, 6);
   petalGeo.scale(1, 1, 0.28); // flatten along z so it reads as a flat flower
@@ -14,17 +16,22 @@ function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 
     const a = (i / petals) * Math.PI * 2;
     const g = petalGeo.clone();
     g.rotateZ(a);
-    g.translate(Math.cos(a) * petalRadius * 1.15, Math.sin(a) * petalRadius * 1.15, 0);
+    g.translate(Math.cos(a) * petalRadius * 1.15 * spread, Math.sin(a) * petalRadius * 1.15 * spread, 0);
     parts.push(g);
   }
   parts.push(new THREE.SphereGeometry(centerRadius, 10, 8));
   return mergeGeometries(parts);
 }
 
-const BUD_FLOWER = buildFlowerGeometry({ petalRadius: 0.55, centerRadius: 0.24 });
-const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5 });
+// One merged geometry per flower kind: distinct petal counts and spreads.
+const KIND_GEOMETRIES = FLOWER_KINDS.map((k) =>
+  buildFlowerGeometry({ petalRadius: 0.5, centerRadius: k.bigCenter, petals: k.petals, spread: k.spread })
+);
 
-// A single petal: a flattened ellipsoid elongated along +x, so it can be
+// Mother bloom: a fuller, larger flower at the trail's end.
+const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5, petals: 8, spread: 1.25 });
+
+// A single player petal: a flattened ellipsoid elongated along z, so it can be
 // rotated and placed radially. The player starts with ONE of these and
 // accumulates more (up to MAX_PETALS) as flowers are collected.
 const PETAL_GEO = new THREE.SphereGeometry(0.34, 8, 6);
@@ -125,9 +132,10 @@ export function initRender(canvas) {
   scene.add(ambient, sun);
 
   // --- Buds (instanced flowers) -----------------------------------------
-  let budMesh = null;
-  let budData = []; // {x,y,z,colorHex}
+  let budMeshes = []; // one InstancedMesh per flower kind
+  let budData = []; // {x,y,z,colorHex,kind}
   let budTimes = []; // seconds since collected (null = active)
+  let budLocalIndex = []; // global bud index -> index inside its kind mesh
   const pops = []; // {x,y,z,life,ring} collection bursts
   // Ring pool for collection pops (fixed small pool, no per-collect allocation).
   const ringPool = [];
@@ -168,7 +176,7 @@ export function initRender(canvas) {
     renderer,
     petal,
     flowerStats() {
-      return { petalCount: petalColors.length, budVertices: BUD_FLOWER.getAttribute('position').count };
+      return { petalCount: petalColors.length, budKinds: KIND_GEOMETRIES.length };
     },
     setTrail(buds, motherPos) {
       scaleBuds(buds);
@@ -219,16 +227,21 @@ export function initRender(canvas) {
 
       // Active buds gently pulse; collected ones shrink away and are then
       // moved far below the world so they are truly gone from the scene.
-      if (budMesh) {
+      // Each kind has its own InstancedMesh; per-instance updates write into
+      // the correct mesh via the per-kind index map.
+      if (budMeshes.length) {
         const dummy = new THREE.Object3D();
         for (let i = 0; i < budData.length; i++) {
           const b = budData[i];
           if (!b) continue;
+          const m = budMeshes[b.kindIndex];
+          if (!m) continue;
+          const local = budLocalIndex[i];
           let scale = 1;
           if (budTimes[i] !== null) {
             budTimes[i] += dt;
             if (budTimes[i] > 0.25) {
-              dummy.position.set(b.x, -500, b.z); // pushed out of view = "removed"
+              dummy.position.set(b.x, -500, b.z);
               dummy.scale.setScalar(0.001);
             } else {
               scale = 1 - budTimes[i] / 0.25;
@@ -241,9 +254,9 @@ export function initRender(canvas) {
             dummy.scale.setScalar(scale);
           }
           dummy.updateMatrix();
-          budMesh.setMatrixAt(i, dummy.matrix);
+          m.setMatrixAt(local, dummy.matrix);
         }
-        budMesh.instanceMatrix.needsUpdate = true;
+        for (const m of budMeshes) m.instanceMatrix.needsUpdate = true;
       }
 
       // Pops: expand and fade each pop's own ring.
@@ -286,26 +299,43 @@ export function initRender(canvas) {
   function scaleBuds(buds) {
     budData = buds;
     budTimes = buds.map(() => null);
-    const count = buds.length;
-    if (budMesh) {
-      scene.remove(budMesh);
-      budMesh.geometry.dispose();
+    budLocalIndex = buds.map((b) => b.kindIndex ?? 0);
+    // Tear down old kind meshes.
+    for (const m of budMeshes) {
+      scene.remove(m);
+      m.geometry.dispose();
+      m.material.dispose();
     }
-    budMesh = new THREE.InstancedMesh(BUD_FLOWER, new THREE.MeshBasicMaterial({ color: 0xffffff }), count);
-    budMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < count; i++) {
-      dummy.position.set(buds[i].x, buds[i].y, buds[i].z);
-      dummy.scale.setScalar(1);
-      dummy.updateMatrix();
-      budMesh.setMatrixAt(i, dummy.matrix);
-    }
-    budMesh.instanceMatrix.needsUpdate = true;
-    // Per-bud tint via instance colors.
-    for (let i = 0; i < count; i++) {
-      budMesh.setColorAt(i, new THREE.Color(buds[i].colorHex));
-    }
-    scene.add(budMesh);
+    budMeshes = [];
+    // One InstancedMesh per flower kind.
+    const perKind = KIND_GEOMETRIES.map(() => []);
+    buds.forEach((b, i) => {
+      const kind = b.kind ?? 0;
+      perKind[kind % KIND_GEOMETRIES.length].push(i);
+    });
+    const kindScale = [1.0, 1.05, 0.92, 1.1];
+    perKind.forEach((indices, kind) => {
+      if (!indices.length) return;
+      const mesh = new THREE.InstancedMesh(
+        KIND_GEOMETRIES[kind],
+        new THREE.MeshBasicMaterial({ color: 0xffffff }),
+        indices.length
+      );
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      const dummy = new THREE.Object3D();
+      indices.forEach((budIndex, local) => {
+        budLocalIndex[budIndex] = local;
+        const b = buds[budIndex];
+        dummy.position.set(b.x, b.y, b.z);
+        dummy.scale.setScalar(kindScale[kind % kindScale.length]);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(local, dummy.matrix);
+        mesh.setColorAt(local, new THREE.Color(b.colorHex));
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      scene.add(mesh);
+      budMeshes[kind] = mesh;
+    });
   }
 
   rebuildPetals();
