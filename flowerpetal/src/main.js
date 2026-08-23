@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { initRender, resize } from './render.js?v=3';
 import { generateTrail, CRUISE_SPEED } from './trail.js?v=2';
 import { advance } from './steer.js';
@@ -140,6 +141,20 @@ const storage = (() => {
     return null;
   }
 })();
+// 3D models used by the game. Several are CC Attribution — they must stay
+// credited as long as they ship. `loaded` flips true when the asset is found.
+const MODEL_CREDITS = [
+  {
+    id: 'cherry-petal',
+    name: 'Cherry blossom petal',
+    author: 'Voyage (@voyagevoyage_vr)',
+    license: 'CC Attribution 4.0 (CC BY)',
+    url: 'https://sketchfab.com/3d-models/cherry-blossom-petal-a1e45d9f9796403ca855a6afa4613627',
+    file: 'assets/cherry-blossom-petal.glb',
+    used: false,
+  },
+];
+
 const AMBIENT_KEY = 'petalBloom.ambient';
 const ambientCheck = document.getElementById('ambientOn');
 if (ambientCheck) {
@@ -361,6 +376,69 @@ const btnStart = document.getElementById('btnStart');
 const btnReset = document.getElementById('btnReset');
 const btnCancelReset = document.getElementById('btnCancelReset');
 const btnDoReset = document.getElementById('btnDoReset');
+const btnCredits = document.getElementById('btnCredits');
+const creditsEl = document.getElementById('credits');
+const creditList = document.getElementById('creditList');
+const btnCreditsClose = document.getElementById('btnCreditsClose');
+
+function renderCredits() {
+  if (!creditList) return;
+  creditList.innerHTML = '';
+  for (const m of MODEL_CREDITS) {
+    const li = document.createElement('li');
+    li.innerHTML =
+      `<strong>${m.name}</strong> — ${m.author}<br>` +
+      `License: ${m.license} — ` +
+      `<a href="${m.url}" target="_blank" rel="noopener">source</a>` +
+      ` <span class="credit-status">[${m.used ? 'in use' : 'not loaded'}]</span>`;
+    creditList.appendChild(li);
+  }
+}
+function openCredits() {
+  renderCredits();
+  creditsEl.classList.add('show');
+  btnCreditsClose.focus();
+}
+function closeCredits() {
+  creditsEl.classList.remove('show');
+  btnCredits.focus();
+}
+if (btnCredits) btnCredits.addEventListener('click', openCredits);
+if (btnCreditsClose) btnCreditsClose.addEventListener('click', closeCredits);
+
+// Keyboard: Escape closes the credits; Space/Enter opens when focused.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeCredits();
+  const crOpen = creditsEl.classList.contains('show');
+  if (crOpen && (e.key === ' ' || e.key === 'Enter') && document.activeElement === btnCreditsClose) {
+    closeCredits();
+    e.preventDefault();
+  }
+});
+
+// Load the CC-BY cherry-blossom petal (GLB) if present; fall back to the
+// procedural petal until then so the game always runs.
+async function loadModelAssets() {
+  const rec = MODEL_CREDITS.find((m) => m.id === 'cherry-petal');
+  try {
+    const res = await fetch(`./${rec.file}`, { method: 'HEAD' });
+    if (!res.ok) return;
+    const loader = new GLTFLoader();
+    const gltf = await loader.loadAsync(`./${rec.file}`);
+    const geo = gltf.scene.children[0]?.geometry;
+    if (!geo) return;
+    // Normalise the model to match the old petal blade (~0.83 units long).
+    geo.computeBoundingBox();
+    const size = geo.boundingBox.getSize(new THREE.Vector3());
+    const k = 0.83 / Math.max(1e-6, size.z);
+    geo.scale(k, k, k);
+    render.setPetalGeometry(geo);
+    rec.used = true;
+  } catch {
+    /* model unavailable — procedural petal stays */
+  }
+}
+loadModelAssets();
 
 let started = false;
 

@@ -164,6 +164,7 @@ export function initRender(canvas) {
   const petalMeshes = [];
   let petalColors = [0xff9ec0];
   let nowSec = 0; // game clock, cached from frame() for eases
+  let petalGeometry = PETAL_GEO; // upgraded to the CC-BY model when loaded
 
   function rebuildPetals() {
     for (const m of petalMeshes) {
@@ -180,7 +181,7 @@ export function initRender(canvas) {
         emissiveIntensity: 0.4,
         roughness: 0.4,
       });
-      const m = new THREE.Mesh(PETAL_GEO, mat);
+      const m = new THREE.Mesh(petalGeometry, mat);
       // Each petal tumbles on its own: distinct orbit radius, speed, phase,
       // breathing and tumble rates, so the swarm churns instead of rotating
       // as a rigid circle.
@@ -316,6 +317,12 @@ export function initRender(canvas) {
     setPetalGlow(progress) {
       const intensity = 0.35 + progress * 0.6;
       for (const mat of petalMats) mat.emissiveIntensity = intensity;
+    },
+    // Swap in the loaded 3D petal (CC-BY cherry blossom). Applied to every
+    // petal on the next rebuild; the procedural one is used until then.
+    setPetalGeometry(geo) {
+      petalGeometry = geo;
+      for (const m of petalMeshes) m.geometry = geo;
     },
     frame(dt, petalPos, bank, timeSec) {
       nowSec = timeSec; // keep the acquisition clock current

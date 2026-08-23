@@ -40,6 +40,22 @@ then open `http://localhost:8000/flowerpetal/` (or the site root and follow
 the link). It uses three.js r160 from unpkg via an import map, so it needs a
 network connection on first load.
 
+## 3D models & attribution
+
+The game uses third-party 3D models that require attribution. **Do not remove
+the Credits view on the title card** (`Credits & models`) — it is the license
+compliance surface.
+
+| Model | Author | License | Source |
+| --- | --- | --- | --- |
+| Cherry blossom petal | Voyage (@voyagevoyage_vr) | CC BY 4.0 | https://sketchfab.com/3d-models/cherry-blossom-petal-a1e45d9f9796403ca855a6afa4613627 |
+
+To use the cherry-blossom petal as the player petals, download the GLB from
+Sketchfab and save it as `flowerpetal/assets/cherry-blossom-petal.glb`. Until
+that file exists the game uses its built-in procedural petal geometry (the
+credits list marks it "not loaded"); the CC-BY license still requires the
+attribution to remain listed.
+
 ## Progress
 
 - Size, total buds, and blooms autosave to `localStorage` on every collection

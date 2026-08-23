@@ -49,9 +49,20 @@
     background: rgba(90,42,74,0.55); color: #fff;
     text-align: center;
   }
-  #confirm.show { display: flex; }
-  #confirm h2 { font-size: 36px; margin: 0; }
-  #confirm .btnrow { display: flex; gap: 20px; }
+  	  #confirm.show { display: flex; }
+	  #confirm h2 { font-size: 36px; margin: 0; }
+	  #confirm .btnrow { display: flex; gap: 20px; }
+	  #credits {
+	    position: fixed; inset: 0; z-index: 26; display: none;
+	    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+	    background: rgba(255, 227, 240, 0.97); color: #5a2a4a; text-align: center;
+	    padding: 24px;
+	  }
+	  #credits.show { display: flex; }
+	  #credits h2 { font-size: 34px; margin: 0; }
+	  .credit-list { list-style: none; margin: 0; padding: 0; font-size: 19px; line-height: 1.7; }
+	  .credit-list a { color: #3a6ea5; font-weight: 600; }
+	  .credit-status { font-size: 15px; opacity: 0.75; }
 </style>
 <script type="importmap">
 {
@@ -81,19 +92,30 @@
 	    <button id="btnStart" class="bigbtn grow" type="button">Start</button>
 	    <button id="btnReset" class="bigbtn" type="button">Reset progress</button>
 	  </div>
-	  <label class="ambient-toggle" for="ambientOn">
+	  	  <label class="ambient-toggle" for="ambientOn">
 	    <input type="checkbox" id="ambientOn" checked> Ambient music <span class="keyhint">(M)</span>
 	  </label>
+	  <button id="btnCredits" class="bigbtn" type="button">Credits &amp; models</button>
 	</div>
 
-<div id="confirm" role="alertdialog" aria-modal="true">
-  <h2>Reset all progress?</h2>
-  <p>Your petal will return to its starting size. This cannot be undone.</p>
-  <div class="btnrow">
-    <button id="btnCancelReset" class="bigbtn" type="button">Cancel</button>
-    <button id="btnDoReset" class="bigbtn" type="button">Yes, reset everything</button>
-  </div>
-</div>
+	<div id="confirm" role="alertdialog" aria-modal="true">
+	  <h2>Reset all progress?</h2>
+	  <p>Your petal will return to its starting size. This cannot be undone.</p>
+	  <div class="btnrow">
+	    <button id="btnCancelReset" class="bigbtn" type="button">Cancel</button>
+	    <button id="btnDoReset" class="bigbtn" type="button">Yes, reset everything</button>
+	  </div>
+	</div>
+
+	<!-- Credits: lists the 3D models used, their authors and licenses (some
+	     are CC Attribution, so attribution must stay with the game). -->
+	<div id="credits" role="dialog" aria-modal="true" aria-labelledby="creditsTitle">
+	  <h2 id="creditsTitle">Credits &amp; models</h2>
+	  <ul class="credit-list" id="creditList"></ul>
+	  <div class="btnrow">
+	    <button id="btnCreditsClose" class="bigbtn" type="button">Back</button>
+	  </div>
+	</div>
 
 <script type="module" src="./src/main.js?v=8"></script>
 </body>
