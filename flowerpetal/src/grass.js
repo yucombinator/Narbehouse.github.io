@@ -242,6 +242,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       varying float vWake;
       varying float vType;
       varying float vEdgeFade;
+      varying float vHalo;
 
       float getHillHeight(float x, float z) {
         float a1 = uHillsParams1.x;
@@ -372,6 +373,13 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
         vec2 toPetal = vec2(wx - uPetalPos.x, wz - uPetalPos.z);
         float distToPetal = length(toPetal);
 
+      // Soft petal-colour halo on the grass beneath. Computed per-vertex here
+      // (distToPetal is already needed for the wake below) and interpolated —
+      // the falloff is smooth over a blade's ~1 m span, so this is visually
+      // identical to the old per-fragment version but costs one exp per vertex
+      // instead of per pixel.
+      vHalo = exp(-distToPetal * distToPetal * 0.045) * 0.32;
+
         if (L <= 80.0 && distToPetal < 40.0) {
           // Instant bow-wave parting as the petal glides over grass
           float grassTop = wy + H;
@@ -475,7 +483,6 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       precision highp float;
 
       uniform vec3 uSunDir;
-      uniform vec3 uPetalPos;
       uniform vec3 uPetalColor;
       uniform vec3 fogColor;
       uniform float fogNear;
@@ -489,6 +496,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       varying float vWake;
       varying float vType;
       varying float vEdgeFade;
+      varying float vHalo;
 
       void main() {
         float h = vUv.y;
@@ -545,15 +553,9 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
 
         vec3 finalColor = baseColor * (skyLight + sunLight);
 
-        // Soft glow from the player's petals onto the grass beneath: a warm
-        // coloured halo that falls off with horizontal distance from the petal.
-        {
-          float dx = vWorldPos.x - uPetalPos.x;
-          float dz = vWorldPos.z - uPetalPos.z;
-          float dist = sqrt(dx * dx + dz * dz);
-          float halo = exp(-dist * dist * 0.045) * 0.32;
-          finalColor += uPetalColor * halo;
-        }
+        // Soft glow from the player's petals onto the grass beneath (halo
+        // computed per-vertex in the grass vertex shader).
+        finalColor += uPetalColor * vHalo;
 
         // Blend into turf colour towards domain edges
         vec3 groundColor = mix(vec3(0.20, 0.36, 0.14), vec3(0.32, 0.52, 0.20), 0.5);

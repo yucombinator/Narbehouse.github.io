@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_KINDS } from './trail.js';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=6';
+import { createGrass } from './grass.js?v=7';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -14,16 +14,22 @@ const FLOWER_VERTEX_SHADER = `
 
   attribute vec3 color;
   attribute float aCenter;
+  attribute float aThick;
+  attribute float aAo;
 
   varying vec3 vWorldPos;
   varying vec3 vNormal;
   varying vec3 vColor;
   varying float vCenter;
   varying vec3 vInstanceColor;
+  varying float vThick;
+  varying float vAo;
 
   void main() {
     vColor = color;
     vCenter = aCenter;
+    vThick = aThick;
+    vAo = aAo;
     vInstanceColor = instanceColor;
 
     vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
@@ -50,21 +56,26 @@ const FLOWER_FRAGMENT_SHADER = `
   varying vec3 vColor;
   varying float vCenter;
   varying vec3 vInstanceColor;
+  varying float vThick;
+  varying float vAo;
 
   void main() {
     vec3 viewDir = normalize(uCameraPos - vWorldPos);
     vec3 sunDir = normalize(uSunDir);
 
-    // Warm golden-amber pollen stamen center; petals take vibrant instance color with organic petal gradient
+    // Warm golden-amber pollen stamen center; petals take vibrant instance
+    // color with an organic per-petal gradient.
     vec3 pollenColor = vec3(1.15, 0.88, 0.28);
     vec3 baseColor = mix(vInstanceColor * vColor, pollenColor * vColor, vCenter);
+    baseColor *= vAo; // ambient occlusion at the petal base / centre
 
     // Organic botanical lighting (harmonious with grass):
     // Wrapped diffuse keeps shaded sides airy so pastels never go muddy.
     float nDotL = max(0.0, dot(vNormal, sunDir) * 0.5 + 0.5);
 
-    // Translucent Subsurface Scattering (sunlight filtering through petal membranes)
-    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * (0.55 * (1.0 - vCenter * 0.45));
+    // Translucent Subsurface Scattering — strongest on thin petal tips/edges.
+    float translucency = 0.45 + (1.0 - vThick) * 1.35;
+    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * (0.55 * (1.0 - vCenter * 0.45)) * translucency;
 
     // Hemispheric sky fill (bright floor = happy pastel read)
     vec3 skyLight = vec3(0.78, 0.90, 1.0) * (0.58 + 0.28 * max(0.0, vNormal.y));
@@ -72,10 +83,15 @@ const FLOWER_FRAGMENT_SHADER = `
     // Sun light with warm golden tone
     vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.48 + sss);
 
+    // Soft specular sheen on the waxy petal surface
+    vec3 halfV = normalize(sunDir + viewDir);
+    float spec = pow(max(0.0, dot(vNormal, halfV)), 28.0) * (0.10 + (1.0 - vThick) * 0.12);
+    vec3 specular = vec3(1.0, 0.97, 0.90) * spec;
+
     // Soft velvety rim sheen (Fresnel)
     float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.8) * 0.32;
 
-    vec3 finalColor = baseColor * (skyLight + sunLight) + vec3(1.0, 0.96, 0.88) * fresnel;
+    vec3 finalColor = baseColor * (skyLight + sunLight) + specular + vec3(1.0, 0.96, 0.88) * fresnel;
 
     // Atmospheric distance fog
     float depth = gl_FragCoord.z / gl_FragCoord.w;
@@ -163,15 +179,21 @@ const MOTHER_VERTEX_SHADER = `
 
   attribute vec3 color;
   attribute float aCenter;
+  attribute float aThick;
+  attribute float aAo;
 
   varying vec3 vWorldPos;
   varying vec3 vNormal;
   varying vec3 vColor;
   varying float vCenter;
+  varying float vThick;
+  varying float vAo;
 
   void main() {
     vColor = color;
     vCenter = aCenter;
+    vThick = aThick;
+    vAo = aAo;
 
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vWorldPos = worldPos.xyz;
@@ -196,6 +218,8 @@ const MOTHER_FRAGMENT_SHADER = `
   varying vec3 vNormal;
   varying vec3 vColor;
   varying float vCenter;
+  varying float vThick;
+  varying float vAo;
 
   void main() {
     vec3 viewDir = normalize(uCameraPos - vWorldPos);
@@ -203,17 +227,23 @@ const MOTHER_FRAGMENT_SHADER = `
 
     vec3 pollenColor = vec3(1.18, 0.92, 0.32);
     vec3 baseColor = mix(uColor * vColor, pollenColor * vColor, vCenter);
+    baseColor *= vAo;
 
     float nDotL = max(0.0, dot(vNormal, sunDir));
-    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * (0.34 * (1.0 - vCenter * 0.45));
+    float translucency = 0.45 + (1.0 - vThick) * 1.35;
+    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * (0.34 * (1.0 - vCenter * 0.45)) * translucency;
 
     vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.26 + 0.26 * max(0.0, vNormal.y));
     vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.55 + sss);
 
+    vec3 halfV = normalize(sunDir + viewDir);
+    float spec = pow(max(0.0, dot(vNormal, halfV)), 28.0) * (0.10 + (1.0 - vThick) * 0.12);
+    vec3 specular = vec3(1.0, 0.97, 0.90) * spec;
+
     float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.8) * 0.22;
 
     vec3 emissive = uColor * 0.14;
-    vec3 finalColor = baseColor * (skyLight + sunLight) + emissive + vec3(1.0, 0.96, 0.88) * fresnel;
+    vec3 finalColor = baseColor * (skyLight + sunLight) + specular + emissive + vec3(1.0, 0.96, 0.88) * fresnel;
 
     float depth = gl_FragCoord.z / gl_FragCoord.w;
     float fogFactor = clamp((depth - fogNear) / (fogFar - fogNear), 0.0, 1.0);
@@ -228,13 +258,19 @@ const PETAL_VERTEX_SHADER = `
   precision highp float;
 
   attribute vec3 color;
+  attribute float aThick;
+  attribute float aAo;
 
   varying vec3 vWorldPos;
   varying vec3 vNormal;
   varying vec3 vColor;
+  varying float vThick;
+  varying float vAo;
 
   void main() {
     vColor = color;
+    vThick = aThick;
+    vAo = aAo;
 
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vWorldPos = worldPos.xyz;
@@ -260,21 +296,31 @@ const PETAL_FRAGMENT_SHADER = `
   varying vec3 vWorldPos;
   varying vec3 vNormal;
   varying vec3 vColor;
+  varying float vThick;
+  varying float vAo;
 
   void main() {
     vec3 viewDir = normalize(uCameraPos - vWorldPos);
     vec3 sunDir = normalize(uSunDir);
 
     vec3 baseColor = uColor * vColor;
+    baseColor *= vAo;
 
     // Wrapped diffuse keeps shaded sides airy so pastels never go muddy.
     float nDotL = max(0.0, dot(vNormal, sunDir) * 0.5 + 0.5);
 
-    // Translucent Subsurface Scattering (golden backlighting through petal)
-    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * 0.65;
+    // Translucent Subsurface Scattering (golden backlighting through petal),
+    // strongest on the thin blade edges and tip.
+    float translucency = 0.45 + (1.0 - vThick) * 1.35;
+    float sss = pow(max(0.0, dot(-vNormal, sunDir)), 2.0) * 0.65 * translucency;
 
     vec3 skyLight = vec3(0.78, 0.90, 1.0) * (0.58 + 0.28 * max(0.0, vNormal.y));
     vec3 sunLight = vec3(1.0, 0.94, 0.78) * (nDotL * 0.48 + sss);
+
+    // Soft specular sheen on the waxy petal surface
+    vec3 halfV = normalize(sunDir + viewDir);
+    float spec = pow(max(0.0, dot(vNormal, halfV)), 28.0) * (0.10 + (1.0 - vThick) * 0.12);
+    vec3 specular = vec3(1.0, 0.97, 0.90) * spec;
 
     // Velvet rim sheen (Fresnel)
     float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.6) * 0.45;
@@ -282,7 +328,7 @@ const PETAL_FRAGMENT_SHADER = `
     // Constant pastel floor + emissive glow ramp on collection
     vec3 emissive = uColor * 0.16 + uColor * (0.10 + uGlow * 0.30);
 
-    vec3 finalColor = baseColor * (skyLight + sunLight) + emissive + vec3(1.0, 0.96, 0.90) * fresnel;
+    vec3 finalColor = baseColor * (skyLight + sunLight) + specular + emissive + vec3(1.0, 0.96, 0.90) * fresnel;
 
     // Atmospheric distance fog
     float depth = gl_FragCoord.z / gl_FragCoord.w;
@@ -294,63 +340,123 @@ const PETAL_FRAGMENT_SHADER = `
   }
 `;
 
-// A petal as a rounded teardrop: stretched blob, tapered toward the crown,
-// used in two layers so blooms read as organic petals instead of blobby
-// spheres. Higher segment counts for a smooth silhouette.
-function teardropPetal(len, wide, thin = 0.3) {
-  const g = new THREE.SphereGeometry(len, 14, 10);
-  g.scale(wide, wide * 0.62, thin);
-  g.rotateZ(0); // long axis along +x before being rotated per-petal
+// Deterministic -1..1 pseudo-random from an integer seed (stable per petal).
+function petalTint(seed) {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return (x - Math.floor(x)) * 2 - 1;
+}
+
+// A petal as a curved, cupped surface: a rounded teardrop outline warped into
+// a shallow spoon (tip and edges arch toward +z) so blooms read as organic
+// petals. Attributes: color (brightness + per-petal tint), aCenter=0,
+// aThick (thin translucent tip/edges, thick base), aAo (ambient occlusion at
+// the base where the petal meets the centre).
+function curvedPetal(len, wide, tint = 0) {
+  const wSeg = 7;
+  const lSeg = 9;
+  const g = new THREE.PlaneGeometry(len, wide, wSeg, lSeg);
+  // PlaneGeometry lies in XY: x = length (base -len/2 .. tip +len/2), y = width.
   const pos = g.attributes.position;
   const colors = new Float32Array(pos.count * 3);
   const centers = new Float32Array(pos.count);
+  const thick = new Float32Array(pos.count);
+  const ao = new Float32Array(pos.count);
+  const halfLen = len * 0.5;
+  const halfWide = wide * 0.5;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
-    const span = Math.max(0.01, len * wide * 2);
-    const t = THREE.MathUtils.clamp((x + len * wide) / span, 0, 1);
-    const bright = 0.82 + t * 0.28;
-    colors[i * 3] = bright;
-    colors[i * 3 + 1] = bright * 0.98;
-    colors[i * 3 + 2] = bright * 0.95;
+    const y = pos.getY(i);
+    const t = THREE.MathUtils.clamp((x + halfLen) / len, 0, 1); // 0 base .. 1 tip
+    const u = THREE.MathUtils.clamp(y / halfWide, -1, 1);       // -1..1 across width
+
+    // Rounded teardrop outline: narrow root, widest ~2/5 up, pinched tip.
+    const raw = Math.sin(Math.PI * THREE.MathUtils.clamp(t * 1.2 - 0.02, 0, 1));
+    const outline = Math.pow(raw, 0.75);
+    const widthScale = 0.16 + 0.84 * outline;
+    pos.setX(i, x);
+    pos.setY(i, y * widthScale);
+
+    // Shallow spoon curl: tip arches toward +z, edges lift a touch (concave).
+    const cup = 0.12 * len;
+    pos.setZ(i, cup * Math.pow(t, 1.4) + cup * 0.35 * u * u * t);
+
+    // Brightness gradient (brighter toward the tip) plus a subtle warm/cool
+    // per-petal tint so petals within one bloom differ like a real flower.
+    const bright = 0.70 + t * 0.38;
+    colors[i * 3] = bright * (1.0 + tint * 0.09);
+    colors[i * 3 + 1] = bright * 0.98 * (1.0 - tint * 0.05);
+    colors[i * 3 + 2] = bright * 0.94 * (1.0 - tint * 0.12);
     centers[i] = 0.0;
+    // Thin translucent edges and tip, thicker base and centre vein.
+    thick[i] = 0.18 + 0.82 * (1.0 - t) * (1.0 - u * u * 0.6);
+    // Ambient occlusion: darker where the petal meets the centre.
+    ao[i] = 0.55 + 0.45 * Math.min(1, t * 1.3);
   }
   g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   g.setAttribute('aCenter', new THREE.Float32BufferAttribute(centers, 1));
-  return g;
+  g.setAttribute('aThick', new THREE.Float32BufferAttribute(thick, 1));
+  g.setAttribute('aAo', new THREE.Float32BufferAttribute(ao, 1));
+  g.computeVertexNormals(); // smooth normals across the shared grid vertices
+  return g.toNonIndexed();  // non-indexed so mergeGeometries accepts it
+}
+
+// Fuzzy flower centre: a flattened pollen dome ringed by small floret buds.
+function buildFlowerCenter(centerRadius) {
+  const parts = [];
+  const dome = new THREE.SphereGeometry(centerRadius, 14, 9, 0, Math.PI * 2, 0, Math.PI * 0.55);
+  dome.scale(1, 1, 0.72);
+  parts.push(dome.toNonIndexed());
+  const floretR = centerRadius * 0.5;
+  const floretSize = centerRadius * 0.3;
+  const florets = 8;
+  for (let i = 0; i < florets; i++) {
+    const a = (i / florets) * Math.PI * 2 + (i % 2) * 0.4;
+    const fl = new THREE.SphereGeometry(floretSize, 8, 6);
+    fl.translate(Math.cos(a) * floretR, Math.sin(a) * floretR, centerRadius * 0.42);
+    parts.push(fl.toNonIndexed());
+  }
+  const merged = mergeGeometries(parts);
+  const count = merged.attributes.position.count;
+  const colors = new Float32Array(count * 3);
+  const centers = new Float32Array(count);
+  const thick = new Float32Array(count);
+  const ao = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    colors[i * 3] = 1.0;
+    colors[i * 3 + 1] = 0.82;
+    colors[i * 3 + 2] = 0.32;
+    centers[i] = 1.0;
+    thick[i] = 1.0; // centre is opaque, not translucent
+    ao[i] = 1.0;
+  }
+  merged.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  merged.setAttribute('aCenter', new THREE.Float32BufferAttribute(centers, 1));
+  merged.setAttribute('aThick', new THREE.Float32BufferAttribute(thick, 1));
+  merged.setAttribute('aAo', new THREE.Float32BufferAttribute(ao, 1));
+  return merged;
 }
 
 function buildFlowerGeometry({ petalRadius = 0.5, centerRadius = 0.26, petals = 5, spread = 1.0 } = {}) {
   const parts = [];
-  // Two overlapping petal layers, each rotated by half a petal, so the bloom
-  // looks like real layered petals rather than a ball with bumps.
+  // Two overlapping petal layers, each offset by half a petal. The inner
+  // layer cups more upright, the outer opens flatter, and every petal is
+  // tinted slightly differently so the bloom reads organic, not cloned.
   for (let layer = 0; layer < 2; layer++) {
+    const tilt = layer === 0 ? 0.35 : 0.7; // radians of upward cup toward +z
     for (let i = 0; i < petals; i++) {
       const a = ((i + layer * 0.5) / petals) * Math.PI * 2;
-      const g = teardropPetal(petalRadius * 0.9, 0.5, 0.3);
-      g.rotateZ(a);
+      const g = curvedPetal(petalRadius * 0.9, petalRadius * 0.55, petalTint(i * 2 + layer));
+      g.rotateY(-tilt); // lift the tip toward the viewer
+      g.rotateZ(a);     // fan around the crown
       g.translate(
         Math.cos(a) * petalRadius * 1.05 * spread,
         Math.sin(a) * petalRadius * 1.05 * spread,
-        (layer === 0 ? 0 : -0.12) // back layer slightly higher
+        (layer === 0 ? 0 : -0.10) // back layer set slightly behind
       );
       parts.push(g);
     }
   }
-  // Fuzzy center: a small, denser sphere with a crown bump.
-  const heart = new THREE.SphereGeometry(centerRadius, 12, 9);
-  heart.scale(1, 1, 0.9);
-  const hpos = heart.attributes.position;
-  const hcolors = new Float32Array(hpos.count * 3);
-  const hcenters = new Float32Array(hpos.count);
-  for (let i = 0; i < hpos.count; i++) {
-    hcolors[i * 3] = 1.0;
-    hcolors[i * 3 + 1] = 0.82;
-    hcolors[i * 3 + 2] = 0.32;
-    hcenters[i] = 1.0;
-  }
-  heart.setAttribute('color', new THREE.Float32BufferAttribute(hcolors, 3));
-  heart.setAttribute('aCenter', new THREE.Float32BufferAttribute(hcenters, 1));
-  parts.push(heart);
+  parts.push(buildFlowerCenter(centerRadius));
   return mergeGeometries(parts);
 }
 
@@ -359,52 +465,91 @@ const KIND_GEOMETRIES = FLOWER_KINDS.map((k) =>
 );
 const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5, petals: 8, spread: 1.25 });
 
-// A slender stem for the collectible flowers: tapered green cylinder rising
-// from the ground to the flower crown. Bases at y=0 (lives in world space).
-const STEM_GEO = new THREE.CylinderGeometry(0.03, 0.05, 1, 6);
-STEM_GEO.translate(0, 0.5, 0);
-{
-  const spos = STEM_GEO.attributes.position;
-  const scol = new Float32Array(spos.count * 3);
-  // Fresh yellow-green: darker where the stem meets its shadow in the grass,
-  // brightening toward the crown so stems never read as black sticks.
+// A small lanceolate leaf blade (pointed at both ends), drooping slightly.
+function buildLeaf() {
+  const g = new THREE.PlaneGeometry(0.16, 0.05, 1, 1);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i); // -0.08 .. 0.08
+    const t = THREE.MathUtils.clamp((x + 0.08) / 0.16, 0, 1);
+    const w = Math.sin(Math.PI * t);
+    pos.setY(i, pos.getY(i) * w);
+    pos.setZ(i, -0.04 * t);   // gentle droop toward the ground
+    pos.setX(i, x + 0.06);    // base tucks into the stem, tip points outward
+  }
+  g.computeVertexNormals();
+  return g.toNonIndexed();
+}
+
+// A slender stem for the collectible flowers: tapered green cylinder with
+// three alternating leaves, rising from the ground (y=0..1, scaled to world
+// length at placement).
+function buildStemGeometry() {
+  const cyl = new THREE.CylinderGeometry(0.03, 0.05, 1, 6);
+  cyl.translate(0, 0.5, 0);
+  const parts = [cyl.toNonIndexed()]; // CylinderGeometry is indexed; leaves aren't
+  const leafHeights = [0.34, 0.58, 0.82];
+  for (let i = 0; i < leafHeights.length; i++) {
+    const leaf = buildLeaf();
+    leaf.rotateY(i * 2.1 + 0.4);
+    leaf.translate(0, leafHeights[i], 0);
+    parts.push(leaf);
+  }
+  const merged = mergeGeometries(parts);
+  const pos = merged.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  // Fresh yellow-green: darker at the grass shadow, brightening to the crown.
   const root = new THREE.Color(0x4a722f);
   const top = new THREE.Color(0xa9cf6d);
-  for (let i = 0; i < spos.count; i++) {
-    const y = spos.getY(i);
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
     const c = root.clone().lerp(top, THREE.MathUtils.clamp(y, 0, 1));
-    scol[i * 3] = c.r;
-    scol[i * 3 + 1] = c.g;
-    scol[i * 3 + 2] = c.b;
+    col[i * 3] = c.r;
+    col[i * 3 + 1] = c.g;
+    col[i * 3 + 2] = c.b;
   }
-  STEM_GEO.setAttribute('color', new THREE.Float32BufferAttribute(scol, 3));
+  merged.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return merged;
 }
+const STEM_GEO = buildStemGeometry();
 const STEM_LEN = 3.2;
 const CROWN_LIFT = STEM_LEN + 0.35; // crown height above the terrain (stands above grass)
 
-// Player petal: an elongated, tapered blade along Z (flight direction) — a
-// wider rounded tip and narrower base, like a real flower petal rather than
-// a plain pill.
-const PETAL_GEO = new THREE.SphereGeometry(0.2, 14, 10);
-PETAL_GEO.scale(0.3, 0.62, 1.6);
-{
-  const pos = PETAL_GEO.attributes.position;
-  const pcol = new Float32Array(pos.count * 3);
+// Player petal: a single curved blade along +z (flight direction) — wider
+// rounded tip, narrower base, cupped gently along its length, like a real
+// flower petal falling through the air rather than a scaled pill.
+function buildPlayerPetal() {
+  const g = new THREE.PlaneGeometry(0.18, 0.34, 7, 8); // x=width, y=length
+  const pos = g.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const thick = new Float32Array(pos.count);
+  const ao = new Float32Array(pos.count);
+  const halfLen = 0.17;
+  const halfWide = 0.09;
   for (let i = 0; i < pos.count; i++) {
-    const z = pos.getZ(i) / 1.6; // -1..1 along the blade
-    // taper width toward the base (z = -1) and round the tip (z = +1)
-    const taper = 0.45 + 0.55 * Math.pow(0.5 + z * 0.5, 0.7);
-    pos.setX(i, pos.getX(i) * taper);
-    pos.setY(i, pos.getY(i) * (0.75 + 0.25 * Math.sin(Math.PI * Math.min(1, Math.max(0, (z + 1) / 2)))));
-    const t = THREE.MathUtils.clamp((z + 1) / 2, 0, 1);
-    const bright = 0.85 + t * 0.22;
-    pcol[i * 3] = bright;
-    pcol[i * 3 + 1] = bright;
-    pcol[i * 3 + 2] = bright;
+    const y = pos.getY(i);
+    const x = pos.getX(i);
+    const t = THREE.MathUtils.clamp((y + halfLen) / 0.34, 0, 1); // 0 base .. 1 tip
+    const u = THREE.MathUtils.clamp(x / halfWide, -1, 1);
+    const outline = Math.pow(Math.sin(Math.PI * THREE.MathUtils.clamp(t * 1.1 - 0.03, 0, 1)), 0.7);
+    const widthScale = 0.2 + 0.8 * outline;
+    pos.setX(i, x * widthScale);
+    pos.setZ(i, 0.05 * Math.pow(t, 1.4) + 0.02 * u * u * t); // gentle cup
+    const bright = 0.68 + t * 0.36;
+    colors[i * 3] = bright;
+    colors[i * 3 + 1] = bright;
+    colors[i * 3 + 2] = bright;
+    thick[i] = 0.2 + 0.8 * (1.0 - t) * (1.0 - u * u * 0.5);
+    ao[i] = 0.6 + 0.4 * Math.min(1, t * 1.2);
   }
-  PETAL_GEO.setAttribute('color', new THREE.Float32BufferAttribute(pcol, 3));
-  PETAL_GEO.computeVertexNormals();
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.setAttribute('aThick', new THREE.Float32BufferAttribute(thick, 1));
+  g.setAttribute('aAo', new THREE.Float32BufferAttribute(ao, 1));
+  g.computeVertexNormals();
+  g.rotateX(Math.PI / 2); // length axis -> +z (flight direction)
+  return g.toNonIndexed();
 }
+const PETAL_GEO = buildPlayerPetal();
 export const MAX_PETALS = 8;
 const PETAL_RING_R = 0.3;
 
@@ -1012,13 +1157,18 @@ export function initRender(canvas) {
     // Swap in the loaded 3D petal (CC-BY cherry blossom). Applied to every
     // petal on the next rebuild; the procedural one is used until then.
     setPetalGeometry(geo) {
+      const count = geo.getAttribute('position').count;
       if (!geo.getAttribute('color')) {
-        const count = geo.getAttribute('position').count;
         const col = new Float32Array(count * 3).fill(1.0);
         geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       }
+      if (!geo.getAttribute('aThick')) {
+        geo.setAttribute('aThick', new THREE.Float32BufferAttribute(new Float32Array(count).fill(1.0), 1));
+      }
+      if (!geo.getAttribute('aAo')) {
+        geo.setAttribute('aAo', new THREE.Float32BufferAttribute(new Float32Array(count).fill(1.0), 1));
+      }
       petalGeometry = geo;
-      for (const m of petalMeshes) m.geometry = geo;
     },
     // Reset the trail slots (called on teleport / new meadow / start so the
     // ribbon never stretches through stale world positions).
