@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { initRender, resize } from './render.js?v=3';
 import { generateTrail, CRUISE_SPEED } from './trail.js?v=2';
 import { advance } from './steer.js';
@@ -150,10 +149,46 @@ const MODEL_CREDITS = [
     author: 'Voyage (@voyagevoyage_vr)',
     license: 'CC Attribution 4.0 (CC BY)',
     url: 'https://sketchfab.com/3d-models/cherry-blossom-petal-a1e45d9f9796403ca855a6afa4613627',
-    file: 'assets/cherry-blossom-petal.glb',
+    file: 'assets/cherry-blossom-petal.obj',
     used: false,
   },
 ];
+
+// Parse a tiny Wavefront OBJ (positions + faces) into a THREE.BufferGeometry.
+// Kept local so no loader dependency is needed for this 26-triangle model.
+function geometryFromObj(text) {
+  const verts = [];
+  const faces = [];
+  for (const line of text.split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] === 'v') verts.push([+parts[1], +parts[2], +parts[3]]);
+    else if (parts[0] === 'f') {
+      const idx = parts.slice(1).map((p) => parseInt(p.split('/')[0], 10) - 1);
+      if (idx.length >= 3) faces.push(idx);
+    }
+  }
+  // Triangulate (all faces here are triangles) and rebuild positions/normals.
+  const positions = [];
+  const normals = [];
+  for (const f of faces) {
+    if (f.length === 3) {
+      const a = verts[f[0]];
+      const b = verts[f[1]];
+      const c = verts[f[2]];
+      positions.push(...a, ...b, ...c);
+      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+      const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const len = Math.hypot(nx, ny, nz) || 1;
+      for (let i = 0; i < 3; i++) normals.push(nx / len, ny / len, nz / len);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  g.computeBoundingBox();
+  return g;
+}
 
 const AMBIENT_KEY = 'petalBloom.ambient';
 const ambientCheck = document.getElementById('ambientOn');
@@ -421,17 +456,16 @@ document.addEventListener('keydown', (e) => {
 async function loadModelAssets() {
   const rec = MODEL_CREDITS.find((m) => m.id === 'cherry-petal');
   try {
-    const res = await fetch(`./${rec.file}`, { method: 'HEAD' });
-    if (!res.ok) return;
-    const loader = new GLTFLoader();
-    const gltf = await loader.loadAsync(`./${rec.file}`);
-    const geo = gltf.scene.children[0]?.geometry;
-    if (!geo) return;
-    // Normalise the model to match the old petal blade (~0.83 units long).
+    const text = await (await fetch(`./${rec.file}`)).text();
+    const geo = geometryFromObj(text);
+    if (geo.attributes.position.count === 0) return;
+    // Normalise to the old petal blade length (~0.83 units along z).
     geo.computeBoundingBox();
     const size = geo.boundingBox.getSize(new THREE.Vector3());
     const k = 0.83 / Math.max(1e-6, size.z);
     geo.scale(k, k, k);
+    // Lay the petal flat-ish facing +z like the procedural blade.
+    geo.rotateY(Math.PI / 2);
     render.setPetalGeometry(geo);
     rec.used = true;
   } catch {

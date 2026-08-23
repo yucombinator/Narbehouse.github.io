@@ -50,11 +50,10 @@ compliance surface.
 | --- | --- | --- | --- |
 | Cherry blossom petal | Voyage (@voyagevoyage_vr) | CC BY 4.0 | https://sketchfab.com/3d-models/cherry-blossom-petal-a1e45d9f9796403ca855a6afa4613627 |
 
-To use the cherry-blossom petal as the player petals, download the GLB from
-Sketchfab and save it as `flowerpetal/assets/cherry-blossom-petal.glb`. Until
-that file exists the game uses its built-in procedural petal geometry (the
-credits list marks it "not loaded"); the CC-BY license still requires the
-attribution to remain listed.
+The model ships as `flowerpetal/assets/cherry-blossom-petal.obj` (parsed at
+runtime into geometry — no GLTF loader needed). The credits list marks it
+"in use" once loaded; the CC BY license is honored by the bundled Credits
+view and this table.
 
 ## Progress
 
