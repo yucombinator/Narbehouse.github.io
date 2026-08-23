@@ -469,11 +469,16 @@ export function initRender(canvas) {
           py = Math.sin(u.orbit * 1.7 + timeSec * 0.7) * 0.3 + Math.cos(u.ph0 + timeSec * 0.5) * 0.3;
           pz = lag;
         }
-        m.position.set(
-          lerp(m.position.x, px, Math.min(1, dt * 4) * ease),
-          lerp(m.position.y, py, Math.min(1, dt * 4) * ease),
-          lerp(m.position.z, pz, Math.min(1, dt * 4) * ease)
-        );
+        const targetY = lerp(m.position.y, py, Math.min(1, dt * 4) * ease);
+        // Never clip the ground: petals hold at least half a petal above the
+        // terrain under them (world position = petal grouping + local offset).
+        const worldX = petalPos.x + lerp(m.position.x, px, Math.min(1, dt * 4) * ease);
+        const worldZ = petalPos.z + lerp(m.position.z, pz, Math.min(1, dt * 4) * ease);
+        const floorY = HILLS.height(worldX, worldZ) + 0.45;
+        const finalY = Math.max(floorY, targetY);
+        const pwx = lerp(m.position.x, px, Math.min(1, dt * 4) * ease);
+        const pwz = lerp(m.position.z, pz, Math.min(1, dt * 4) * ease);
+        m.position.set(pwx, finalY, pwz);
         m.scale.setScalar((0.5 + ease * 0.5) * (1 + windIntensity * 0.18));
         m.rotation.x = u.basePitch + windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
         m.rotation.y = u.baseYaw + Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
