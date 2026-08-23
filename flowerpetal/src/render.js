@@ -35,8 +35,10 @@ const STEM_MAT = new THREE.MeshStandardMaterial({ color: 0x3e8f3e, roughness: 0.
 const STEM_LEN = 2.2;
 const CROWN_LIFT = STEM_LEN + 0.25; // crown height above the terrain
 
+// Petal elongated along Z = the flight direction, so it streams nose-first
+// with the wind instead of lying sideways across the path.
 const PETAL_GEO = new THREE.SphereGeometry(0.26, 8, 6);
-PETAL_GEO.scale(1.6, 0.75, 0.3);
+PETAL_GEO.scale(0.3, 0.75, 1.6);
 export const MAX_PETALS = 8;
 const PETAL_RING_R = 0.3;
 
@@ -316,10 +318,12 @@ export function initRender(canvas) {
         const pz = u.z0 + Math.sin(timeSec * 1.3 + u.orbit * 3) * u.zdepth;
         m.position.set(px * ease, py * ease, pz * ease);
         m.scale.setScalar(0.2 + ease * 0.8);
-        // Tumble: spin around the petal's long axis and wobble face-on.
-        m.rotation.z = Math.sin(u.orbit + u.ph0) * 0.5 + Math.sin(timeSec * u.tumble + u.ph0) * 0.28;
-        m.rotation.x = windBias * 0.7 + Math.sin(timeSec * 1.9 + u.ph0) * 0.22;
-        m.rotation.y = Math.sin(timeSec * 0.9 + u.ph0 * 2) * 0.25;
+        // Orient with the wind: the long axis stays along the flight axis (z).
+        // Pitch into the air current (windBias), with only small yaw/roll
+        // flutter so petals stream nose-first instead of swinging sideways.
+        m.rotation.x = windBias * 0.5 + Math.sin(timeSec * 1.9 + u.ph0) * 0.18;
+        m.rotation.y = Math.sin(timeSec * 1.3 + u.ph0 * 2) * 0.22;
+        m.rotation.z = Math.sin(timeSec * u.tumble + u.ph0) * 0.3;
       }
 
       // Grass: field centered on the petal in world space; each blade is

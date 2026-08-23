@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize } from './render.js';
+import { initRender, resize } from './render.js?v=3';
 import { generateTrail, CRUISE_SPEED } from './trail.js?v=2';
 import { advance } from './steer.js';
 import { collectBud, tintFor } from './growth.js';
