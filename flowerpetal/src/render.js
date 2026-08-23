@@ -57,13 +57,11 @@ export function initRender(canvas) {
   const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }));
   scene.add(sky);
 
-  // --- World group: terrain + grass + flowers in one moving frame --------
-  const world = new THREE.Group();
-  scene.add(world);
-
-  // Rolling green hills.
+  // --- World-fixed ground: ONE plane at world origin, displaced by HILLS at
+  // true world coordinates. Flowers, grass, and the petal's clamp sample the
+  // same function at the same origin, so nothing can float off the surface.
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(600, 600, 80, 80),
+    new THREE.PlaneGeometry(1600, 1600, 128, 128),
     new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true })
   );
   {
@@ -72,9 +70,9 @@ export function initRender(canvas) {
     const cHigh = new THREE.Color(0x7ec850);
     const cLow = new THREE.Color(0x9ee06a);
     for (let i = 0; i < gpos.count; i++) {
-      const lx = gpos.getX(i);
-      const lz = gpos.getY(i);
-      const h = HILLS.height(lx, lz);
+      const wx = gpos.getX(i);   // plane local x == world x
+      const wz = gpos.getY(i);   // plane local y is world z after the rotation below
+      const h = HILLS.height(wx, wz);
       gpos.setZ(i, h);
       const t = THREE.MathUtils.clamp((h + 5) / 10, 0, 1);
       const c = cLow.clone().lerp(cHigh, t);
@@ -83,10 +81,14 @@ export function initRender(canvas) {
     ground.geometry.setAttribute('color', new THREE.Float32BufferAttribute(hillColors, 3));
     ground.geometry.computeVertexNormals();
     ground.rotation.x = -Math.PI / 2;
-    world.add(ground);
+    ground.position.set(0, 0, 0);
+    ground.receiveShadow = true;
+    scene.add(ground);
   }
 
-  // Grass.
+  // Grass rides the world terrain. The InstancedMesh stays in world space;
+  // each blade is planted at HILLS(worldX, worldZ) and the whole field
+  // re-centers on the player's (x, z) each frame (local seeds in ±GRASS_R).
   const GRASS_N = 900;
   const GRASS_R = 60;
   const grassGeo = new THREE.PlaneGeometry(0.12, 1.1, 1, 3);
@@ -108,7 +110,7 @@ export function initRender(canvas) {
       sway: 0.25 + Math.random() * 0.5,
     });
   }
-  world.add(grass);
+  scene.add(grass);
 
   // --- Player ring ---
   const petal = new THREE.Group();
@@ -197,7 +199,7 @@ export function initRender(canvas) {
   mother.userData.wx = 0;
   mother.userData.wz = 0;
   mother.castShadow = true;
-  world.add(mother);
+  scene.add(mother);
 
   // Clouds.
   const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
@@ -264,30 +266,26 @@ export function initRender(canvas) {
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
       petalRing.rotation.z = timeSec * 0.5;
 
-      // World streams past: group sits at the camera's foot (x, z).
-      world.position.set(camera.position.x, 0, camera.position.z);
-
-      // Grass: ride the terrain, bend with wind + proximity to the petal.
-      const playerLocalX = petalPos.x - camera.position.x;
-      const playerLocalZ = petalPos.z - camera.position.z;
+      // Grass: field centered on the petal in world space; each blade is
+      // planted at HILLS(world) and bends with wind + proximity.
       const swayBase = Math.sin(timeSec * 1.4) * 0.18;
       for (let i = 0; i < GRASS_N; i++) {
         const s = grassSeeds[i];
-        const dcx = s.x - playerLocalX;
-        const dcz = s.z - playerLocalZ;
-        const dist = Math.hypot(dcx, dcz);
+        const wx = petalPos.x + s.x;
+        const wz = petalPos.z + s.z;
+        const dist = Math.hypot(s.x, s.z);
         const prox = Math.max(0, 1 - dist / 18);
         const bend = prox * prox * (s.sway * (0.5 + 0.5 * Math.sin(timeSec * 2.2 + s.ph)));
-        gDummy.position.set(s.x, HILLS.height(s.x, s.z), s.z);
-        gDummy.rotation.y = Math.atan2(dcx, dcz);
-        gDummy.rotation.z = (swayBase + bend) * -Math.sign(dcx || 0.001);
+        gDummy.position.set(wx, HILLS.height(wx, wz), wz);
+        gDummy.rotation.y = Math.atan2(s.x, s.z);
+        gDummy.rotation.z = (swayBase + bend) * -Math.sign(s.x || 0.001);
         gDummy.scale.set(1, s.s, 1);
         gDummy.updateMatrix();
         grass.setMatrixAt(i, gDummy.matrix);
       }
       grass.instanceMatrix.needsUpdate = true;
 
-      // Flowers: world positions -> local in the streaming world; y = terrain.
+      // Flowers: planted on the terrain in true world coords (meshes at origin).
       if (budMeshes.length) {
         const dummy = new THREE.Object3D();
         for (let i = 0; i < budData.length; i++) {
@@ -297,22 +295,20 @@ export function initRender(canvas) {
           const mesh = budMeshes[kind];
           if (!mesh) continue;
           const local = budLocal[i];
-          const lx = b.x - camera.position.x;
-          const lz = b.z - camera.position.z;
           const groundY = HILLS.height(b.x, b.z) + 0.5;
           if (budTimes[i] !== null) {
             budTimes[i] += dt;
             if (budTimes[i] > 0.25) {
-              dummy.position.set(lx, -500, lz);
+              dummy.position.set(b.x, -500, b.z);
               dummy.scale.setScalar(0.001);
             } else {
               const sc = 1 - budTimes[i] / 0.25;
-              dummy.position.set(lx, groundY, lz);
+              dummy.position.set(b.x, groundY, b.z);
               dummy.scale.setScalar(sc * KIND_SCALE[kind]);
             }
           } else {
             const sc = 1 + Math.sin(timeSec * 2.5 + i) * 0.06;
-            dummy.position.set(lx, groundY, lz);
+            dummy.position.set(b.x, groundY, b.z);
             dummy.scale.setScalar(sc * KIND_SCALE[kind]);
           }
           dummy.updateMatrix();
@@ -371,7 +367,7 @@ export function initRender(canvas) {
       perKind[k].push(i);
     });
     for (const m of budMeshes) {
-      world.remove(m);
+      scene.remove(m);
       m.geometry.dispose();
       m.material.dispose();
     }
@@ -388,7 +384,8 @@ export function initRender(canvas) {
         budLocal[idx] = local;
         mesh.setColorAt(local, new THREE.Color(buds[idx].colorHex));
       });
-      world.add(mesh);
+      mesh.castShadow = true;
+      scene.add(mesh);
       budMeshes[k] = mesh;
     });
   }
