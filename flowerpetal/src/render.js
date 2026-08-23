@@ -610,7 +610,7 @@ export function initRender(canvas) {
       // banks (windIntensity up), the air rushes past visibly faster — the
       // slivers stream along the axis at a speed proportional to the steering,
       // and they lean/slip back so the motion reads as sustained rush.
-      const flowSpeed = 2.2 + windIntensity * 18; // world units/s along flow
+      const flowSpeed = 2.0 + windIntensity * 7; // world units/s along flow
       if (streakMat) {
         const dirX = camera.position.x - petalPos.x;
         const dirZ = camera.position.z - petalPos.z;
