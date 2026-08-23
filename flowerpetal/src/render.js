@@ -308,22 +308,20 @@ export function initRender(canvas) {
           const k = Math.min(1, age / 1.0);
           ease = k * k * (3 - 2 * k); // smoothstep
         }
-        // Orbit advances; wind speeds it up and drifts the phase downstream.
-        u.orbit += dt * u.dir * u.speed * (0.6 + Math.abs(windBias)) + windBias * dt * 1.3;
-        const rad = u.radius0 * (1 + 0.28 * Math.sin(timeSec * u.breathe + u.ph0));
-        // Elliptical sway, not a true circle; z bobs on its own depth so
-        // petals pass in front of and behind each other instead of stacking.
+        // Orbit advances slowly; wind nudges the phase gently downstream.
+        u.orbit += dt * u.dir * u.speed * 0.22 + windBias * dt * 0.35;
+        const rad = u.radius0 * (1 + 0.1 * Math.sin(timeSec * u.breathe + u.ph0));
+        // Compact elliptical sway, barely moving; z bobs a little for depth.
         const px = Math.cos(u.orbit) * rad;
-        const py = Math.sin(u.orbit) * rad * u.flat + 0.18 * Math.sin(timeSec * u.tumble + u.ph0);
-        const pz = u.z0 + Math.sin(timeSec * 1.3 + u.orbit * 3) * u.zdepth;
+        const py = Math.sin(u.orbit) * rad * u.flat + 0.06 * Math.sin(timeSec * u.tumble + u.ph0);
+        const pz = u.z0 + Math.sin(timeSec * 1.1 + u.orbit * 2) * u.zdepth * 0.35;
         m.position.set(px * ease, py * ease, pz * ease);
-        m.scale.setScalar(0.2 + ease * 0.8);
-        // Orient with the wind: the long axis stays along the flight axis (z).
-        // Pitch into the air current (windBias), with only small yaw/roll
-        // flutter so petals stream nose-first instead of swinging sideways.
-        m.rotation.x = windBias * 0.5 + Math.sin(timeSec * 1.9 + u.ph0) * 0.18;
-        m.rotation.y = Math.sin(timeSec * 1.3 + u.ph0 * 2) * 0.22;
-        m.rotation.z = Math.sin(timeSec * u.tumble + u.ph0) * 0.3;
+        m.scale.setScalar(0.3 + ease * 0.7);
+        // Orient with the wind: the long axis stays along the flight axis (z),
+        // with only gentle flutter — tiny pitch/yaw/roll, near-still.
+        m.rotation.x = windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
+        m.rotation.y = Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
+        m.rotation.z = Math.sin(timeSec * 0.9 + u.ph0) * 0.1;
       }
 
       // Grass: field centered on the petal in world space; each blade is
