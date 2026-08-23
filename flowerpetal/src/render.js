@@ -57,7 +57,7 @@ const CROWN_LIFT = STEM_LEN + 0.25; // crown height above the terrain
 // Player petal: an elongated, tapered blade along Z (flight direction) — a
 // wider rounded tip and narrower base, like a real flower petal rather than
 // a plain pill.
-const PETAL_GEO = new THREE.SphereGeometry(0.26, 14, 10);
+const PETAL_GEO = new THREE.SphereGeometry(0.2, 14, 10);
 PETAL_GEO.scale(0.3, 0.62, 1.6);
 {
   const pos = PETAL_GEO.attributes.position;
@@ -452,22 +452,22 @@ export function initRender(canvas) {
           const k = Math.min(1, age / 1.0);
           ease = k * k * (3 - 2 * k);
         }
-        // Petal i sits (i+1)*3.6 units BEHIND the player. Flight is toward
-        // -z, so behind = +z (toward the camera side). This guarantees a
-        // visible, evenly spaced ribbon streaming back.
-        const lag = (i + 1) * 3.6;
-        // Meshes live in the ring's LOCAL space (ring sits at the petal's
-        // world position), so z must be RELATIVE: +lag = behind (+z = camera
-        // side), x/y are relative too.
-        const px = Math.sin(u.ph0 + timeSec * 0.5) * 1.1 + windBias * 1.4;
-        const py = Math.cos(u.ph0 * 1.7 + timeSec * 0.6) * 0.55;
+        // Petal i sits closer behind the player — a tight swirling clump, not
+        // a single-file line: petals keep their own slow orbit, yaw and bob.
+        const lag = (i + 1) * 1.9;
+        // Meshes live in the ring's LOCAL space, so z is relative (+ = behind,
+        // toward the camera side). A small per-petal orbit + wind swirl keeps
+        // the clump alive instead of a strict line.
+        const orbitAng = u.orbit + timeSec * (0.4 + windIntensity * 0.5);
+        const px = Math.cos(u.orbit + timeSec * 0.6) * (0.5 + i * 0.12) + windBias * 0.9;
+        const py = Math.sin(orbitAng) * 0.28 + Math.cos(u.ph0 * 1.7 + timeSec * 0.6) * 0.35;
         const pz = lag;
         m.position.set(
           lerp(m.position.x, px, Math.min(1, dt * 4) * ease),
           lerp(m.position.y, py, Math.min(1, dt * 4) * ease),
           lerp(m.position.z, pz, Math.min(1, dt * 4) * ease)
         );
-        m.scale.setScalar((0.3 + ease * 0.7) * (1 + windIntensity * 0.18));
+        m.scale.setScalar((0.5 + ease * 0.5) * (1 + windIntensity * 0.18));
         m.rotation.x = u.basePitch + windBias * 0.18 + Math.sin(timeSec * 1.4 + u.ph0) * 0.06;
         m.rotation.y = u.baseYaw + Math.sin(timeSec * 1.1 + u.ph0 * 2) * 0.08;
         m.rotation.z = u.baseRoll + Math.sin(timeSec * 0.9 + u.ph0) * 0.1;
