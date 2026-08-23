@@ -281,7 +281,7 @@ window.__petalGame = {
     render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
-    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed };
+    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1 };
   },
   bud(i) {
     return trail.buds[i]
@@ -401,7 +401,39 @@ function windAssist(dt) {
 // the fifth pick the petal drifts into the bouquet ceremony.
 let run = createRun(meadowSeed);
 let stopZs = [];
-const SCAN_INTERVAL_MS = 2000; // unhurried: Ben has time to look and listen
+// --- Hub-wide accessibility managers -------------------------------------
+// The hub ships shared managers (bennyshub/shared/) that hold the player's
+// global scan cadence and voice choice. Bloom defers to them when present
+// and falls back to local settings when played standalone.
+function narbeScan() { return window.NarbeScanManager || null; }
+function narbeVoice() { return window.NarbeVoiceManager || null; }
+
+// Local fallbacks (standalone play without the hub scripts).
+const SCANMODE_KEY = 'petalBloom.scanMode';
+const SCANMS_KEY = 'petalBloom.scanMs';
+let autoScan = true; // Automatic: highlight advances on its own (one switch)
+try { autoScan = storage.getItem(SCANMODE_KEY) !== 'manual'; } catch { /* no storage */ }
+let scanIntervalMs = 2000; // unhurried: Ben has time to look and listen
+try {
+  const saved = parseInt(storage.getItem(SCANMS_KEY), 10);
+  if ([1000, 2000, 3000, 4000].includes(saved)) scanIntervalMs = saved;
+} catch { /* no storage */ }
+
+function isAutoScan() {
+  const sm = narbeScan();
+  return sm ? !!sm.getSettings().autoScan : autoScan;
+}
+
+function currentScanInterval() {
+  const sm = narbeScan();
+  return sm ? sm.getScanInterval() : scanIntervalMs;
+}
+
+function armDialogTimer(fn, ms = currentScanInterval()) {
+  // In Manual scanning the highlight only moves when Space is pressed.
+  if (!isAutoScan()) return null;
+  return setInterval(fn, ms);
+}
 let isStopOpen = false;
 let stopTimer = null;
 let stopFocus = 0;
@@ -421,10 +453,21 @@ const TTS_KEY = 'petalBloom.tts';
 const ttsCheck = document.getElementById('ttsOn');
 let ttsOn = true;
 try { ttsOn = storage.getItem(TTS_KEY) !== '0'; } catch { /* no storage */ }
+// The hub's voice manager is the source of truth when it's loaded.
+if (narbeVoice()) {
+  ttsOn = !!narbeVoice().getSettings().ttsEnabled;
+  if (ttsCheck) ttsCheck.checked = ttsOn;
+}
 if (ttsCheck) ttsCheck.checked = ttsOn;
 function applyTtsPref() {
-  ttsOn = !ttsCheck || ttsCheck.checked;
-  try { storage.setItem(TTS_KEY, ttsOn ? '1' : '0'); } catch { /* no storage */ }
+  const want = !ttsCheck || ttsCheck.checked;
+  const vm = narbeVoice();
+  if (vm) {
+    if (vm.getSettings().ttsEnabled !== want) vm.toggleTTS(); // syncs back via onSettingsChange
+  } else {
+    ttsOn = want;
+    try { storage.setItem(TTS_KEY, ttsOn ? '1' : '0'); } catch { /* no storage */ }
+  }
 }
 if (ttsCheck) ttsCheck.addEventListener('change', applyTtsPref);
 function speak(text, rate = 1, onEnd = null) {
@@ -433,9 +476,18 @@ function speak(text, rate = 1, onEnd = null) {
     return false;
   }
   try {
-    speechSynthesis.cancel();
+    hushSpeech();
+    const vm = narbeVoice();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = rate;
+    if (vm) {
+      // Speak with the player's hub-wide voice choice.
+      const s = vm.getSettings();
+      u.pitch = s.pitch;
+      u.volume = s.volume;
+      const v = vm.getCurrentVoice();
+      if (v) u.voice = v;
+    }
     if (onEnd) {
       u.onend = onEnd;
       u.onerror = onEnd;
@@ -448,6 +500,10 @@ function speak(text, rate = 1, onEnd = null) {
   }
 }
 function hushSpeech() {
+  const vm = narbeVoice();
+  if (vm) {
+    try { vm.cancel(); return; } catch { /* fall through */ }
+  }
   if ('speechSynthesis' in window) {
     try { speechSynthesis.cancel(); } catch { /* ignore */ }
   }
@@ -503,13 +559,15 @@ const stopEl = document.getElementById('stop');
 const stopPromptEl = document.getElementById('stopPrompt');
 const stopCardsEl = document.getElementById('stopCards');
 
-function focusChoice(k) {
+function focusChoice(k, silent = false) {
   const n = stopOffer.length || 1;
   stopFocus = ((k % n) + n) % n;
   [...stopCardsEl.children].forEach((el, i) => el.classList.toggle('focused', i === stopFocus));
-  speak(flowerById(stopOffer[stopFocus]).tts);
+  // Zen rule: a stop that opens as you drift by stays silent. Names are
+  // spoken only once you start making a choice (scan steps / auto-scan).
+  if (!silent) speak(flowerById(stopOffer[stopFocus]).tts);
   clearInterval(stopTimer);
-  stopTimer = setInterval(() => focusChoice(stopFocus + 1), SCAN_INTERVAL_MS);
+  stopTimer = armDialogTimer(() => focusChoice(stopFocus + 1));
 }
 
 function openStop() {
@@ -533,7 +591,7 @@ function openStop() {
   });
   isStopOpen = true;
   stopEl.classList.add('show');
-  focusChoice(0);
+  focusChoice(0, true); // silent until the player engages
 }
 
 function closeStop() {
@@ -557,11 +615,10 @@ function commitFocused(k) {
   if (run.phase === 'FLYING') saveProgress();
 }
 
-// --- Interlude: the stage album ------------------------------------------
-// Each stage ends with one postcard. Between stages Ben slowly scans every
-// card earned so far (auto-highlight; Space steps, Enter chooses) and then
-// either flies on or rests. The album lives only for this page session.
-const INTERLUDE_SCAN_MS = 1600;
+// --- Interlude: read the haiku, mail the postcard ------------------------
+// Each stage ends with one postcard. Ben hears its haiku (exactly once),
+// then watches it fly into the mailbox — sent away, like a real letter.
+// After the send-off he scans two gentle choices: fly on or rest.
 const cerEl = document.getElementById('ceremony');
 const cerTitle = document.getElementById('cerTitle');
 const cerPoem = document.getElementById('poemLines');
@@ -579,6 +636,8 @@ let sessionCards = []; // [{ picks, seed, card }] — cleared only on page exit
 let scanItems = [];
 let scanFocus = 0;
 let scanTimer = null;
+let interludePhase = 'idle'; // 'reveal' → 'mailing' → 'choices' → 'idle'
+let mailTimer = null;
 
 function ceremonyOpen() {
   return !!cerEl && cerEl.classList.contains('show');
@@ -610,34 +669,12 @@ function holdScanForSpeech(onDone) {
 
 function focusScanItem(k) {
   const n = scanItems.length || 1;
-  const prev = scanFocus;
   scanFocus = ((k % n) + n) % n;
   const item = scanItems[scanFocus];
   btnFlyOn.classList.toggle('scanFocused', false);
   btnRest.classList.toggle('scanFocused', false);
   clearInterval(scanTimer);
-  if (item.type === 'card') {
-    // Slide the postcard in from the direction we stepped; replaying the
-    // same card (Enter) doesn't re-animate.
-    const raw = scanFocus - prev;
-    const dir = Math.abs(raw) > 1 ? (raw < 0 ? 1 : -1) : raw >= 0 ? 1 : -1;
-    if (prev !== scanFocus || lastNarration === null) fillPostcard(sessionCards[item.idx], dir);
-    cerPos.textContent = `Postcard ${item.idx + 1} of ${sessionCards.length}`;
-    // Only the newest meadow's haiku is narrated on its own, exactly once;
-    // later passes of the scan (and earlier postcards) stay silent unless
-    // Ben asks for a replay with Enter.
-    if (item.idx === sessionCards.length - 1) {
-      const rec = sessionCards[item.idx];
-      if (!rec.narrated) {
-        rec.narrated = true;
-        holdScanForSpeech(() => armInterludeTimer());
-      } else {
-        armInterludeTimer();
-      }
-    } else {
-      armInterludeTimer();
-    }
-  } else if (item.act === 'next') {
+  if (item.act === 'next') {
     cerPos.textContent = 'Fly on to the next meadow?';
     btnFlyOn.classList.toggle('scanFocused', true);
     armInterludeTimer();
@@ -650,27 +687,76 @@ function focusScanItem(k) {
 
 function armInterludeTimer() {
   clearInterval(scanTimer);
-  scanTimer = setInterval(() => focusScanItem(scanFocus + 1), INTERLUDE_SCAN_MS);
+  scanTimer = armDialogTimer(() => focusScanItem(scanFocus + 1));
 }
 
 function buildScanItems() {
-  scanItems = sessionCards.map((_, idx) => ({ type: 'card', idx }));
+  scanItems = [];
   if (stageIndex < TOTAL_STAGES - 1 || sessionCards.length < TOTAL_STAGES) {
     scanItems.push({ type: 'act', act: 'next' });
   }
   scanItems.push({ type: 'act', act: 'rest' });
 }
 
+// Send-off: the postcard flies into the mailbox and is gone for good.
+function startMailing() {
+  if (!ceremonyOpen() || interludePhase !== 'reveal') return;
+  interludePhase = 'mailing';
+  clearInterval(scanTimer);
+  clearTimeout(haikuGuard); // narration is done or skipped
+  cerPos.textContent = 'Off it goes…';
+  cerEl.classList.add('mail-time');
+  postcardEl.classList.remove('postcard-in-r', 'postcard-in-l');
+  void postcardEl.offsetWidth; // restart from a clean transform
+  postcardEl.classList.add('mailing');
+  clearTimeout(mailTimer);
+  mailTimer = setTimeout(() => {
+    if (!ceremonyOpen()) return;
+    cerEl.classList.add('mailed'); // pops the little flag up
+    cerEl.classList.remove('pre-choices'); // choices take the stage
+    audio?.chime?.(660); // gentle send-off chime
+    speak('In the mail!');
+    cerPos.textContent = 'Postcard mailed ✓';
+    interludePhase = 'choices';
+    buildScanItems();
+    focusScanItem(0);
+  }, 1500);
+}
+
+let haikuGuard = null;
+function startReveal(rec) {
+  interludePhase = 'reveal';
+  cerEl.classList.add('pre-choices');
+  cerPos.textContent = 'Your postcard is ready';
+  cerEl.classList.remove('mail-time', 'mailed');
+  postcardEl.classList.remove('mailing');
+  fillPostcard(rec, rec.dealDir || 0);
+  // The newest meadow's haiku is narrated exactly once; Enter replays it.
+  // Safety net: if the utterance never reports its end (headless browsers,
+  // wedged engines), the send-off still arrives.
+  rec.narrated = true;
+  const spoke = holdScanForSpeech(() => startMailing());
+  clearTimeout(haikuGuard);
+  if (spoke) haikuGuard = setTimeout(() => startMailing(), 12000);
+}
+
 function openInterlude(newestFirst = true) {
   buildScanItems();
   hushSpeech();
   cerEl.classList.add('show');
-  focusScanItem(newestFirst ? Math.max(0, sessionCards.length - 1) : 0);
+  const rec = sessionCards[sessionCards.length - 1];
+  if (!rec) { closeInterlude(); return; }
+  rec.dealDir = newestFirst ? 0 : -1; // final card drifts in from the left
+  startReveal(rec);
 }
 
 function closeInterlude() {
   clearInterval(scanTimer);
-  cerEl.classList.remove('show');
+  clearTimeout(mailTimer);
+  clearTimeout(haikuGuard);
+  interludePhase = 'idle';
+  cerEl.classList.remove('show', 'mail-time', 'mailed', 'pre-choices');
+  postcardEl.classList.remove('mailing');
   hushSpeech();
 }
 
@@ -699,21 +785,18 @@ function flyNextStage() {
 }
 
 function activateScanItem() {
+  if (interludePhase !== 'choices') return; // choices unlock after the send-off
   const item = scanItems[scanFocus];
   if (!item) return;
-  if (item.type === 'card') {
-    fillPostcard(sessionCards[item.idx], 0);
-    // Deliberate replay: hear this haiku in full; the scan waits it out.
-    holdScanForSpeech(() => armInterludeTimer());
-  } else if (item.act === 'next') {
+  if (item.act === 'next') {
     closeInterlude();
     flyNextStage(); // stageIndex already advanced when the card was stamped
   } else {
     toTitle();
   }
 }
-if (btnFlyOn) btnFlyOn.addEventListener('click', () => { if (ceremonyOpen()) activateScanItemAt('next'); });
-if (btnRest) btnRest.addEventListener('click', () => { if (ceremonyOpen()) activateScanItemAt('rest'); });
+if (btnFlyOn) btnFlyOn.addEventListener('click', () => { if (ceremonyOpen() && interludePhase === 'choices') activateScanItemAt('next'); });
+if (btnRest) btnRest.addEventListener('click', () => { if (ceremonyOpen() && interludePhase === 'choices') activateScanItemAt('rest'); });
 function activateScanItemAt(act) {
   closeInterlude();
   if (act === 'next') {
@@ -739,6 +822,8 @@ function pauseMenuItems() {
     return [
       { label: () => `Voice narration: ${ttsOn ? 'On' : 'Off'}`, act: 'toggle-tts' },
       { label: () => `Ambient sound: ${ambientCheck && ambientCheck.checked ? 'On' : 'Off'}`, act: 'toggle-audio' },
+      { label: () => `Scanning: ${isAutoScan() ? 'Automatic' : 'Manual — press Space'}`, act: 'toggle-scan' },
+      { label: () => `Scan speed: ${currentScanInterval() / 1000} seconds`, act: 'cycle-scan-speed' },
       { label: () => 'Back', act: 'back' },
     ];
   }
@@ -769,13 +854,13 @@ function focusPauseItem(k) {
   pauseFocus = ((k % n) + n) % n;
   renderPauseItems();
   clearInterval(pauseTimer);
-  pauseTimer = setInterval(() => focusPauseItem(pauseFocus + 1), SCAN_INTERVAL_MS);
+  pauseTimer = armDialogTimer(() => focusPauseItem(pauseFocus + 1));
   speak(pauseMenuItems()[pauseFocus].label(), 1);
 }
 
 function armPauseScan() {
   clearInterval(pauseTimer);
-  pauseTimer = setInterval(() => focusPauseItem(pauseFocus + 1), SCAN_INTERVAL_MS);
+  pauseTimer = armDialogTimer(() => focusPauseItem(pauseFocus + 1));
 }
 
 function openPause() {
@@ -846,11 +931,43 @@ function activatePauseItem(i = pauseFocus) {
     case 'exit':
       exitGame();
       break;
-    case 'toggle-tts': {
-      ttsOn = !ttsOn;
-      try { storage.setItem(TTS_KEY, ttsOn ? '1' : '0'); } catch { /* no storage */ }
-      if (ttsCheck) ttsCheck.checked = ttsOn;
+    case 'toggle-scan': {
+      const sm = narbeScan();
+      if (sm) {
+        sm.setAutoScan(!isAutoScan()); // hub-wide; syncs back via subscribe
+      } else {
+        autoScan = !autoScan;
+        try { storage.setItem(SCANMODE_KEY, autoScan ? 'auto' : 'manual'); } catch { /* no storage */ }
+      }
       renderPauseItems();
+      speak(isAutoScan() ? 'Automatic scanning' : 'Manual scanning: press Space to move');
+      armPauseScan();
+      break;
+    }
+    case 'cycle-scan-speed': {
+      const sm = narbeScan();
+      if (sm) {
+        sm.cycleScanSpeed(); // hub-wide speeds: 1s / 2s / 3s / 4s
+      } else {
+        const SPEEDS = [1000, 2000, 3000, 4000];
+        scanIntervalMs = SPEEDS[(SPEEDS.indexOf(scanIntervalMs) + 1) % SPEEDS.length];
+        try { storage.setItem(SCANMS_KEY, String(scanIntervalMs)); } catch { /* no storage */ }
+      }
+      renderPauseItems();
+      speak(`${currentScanInterval() / 1000} second scanning`);
+      armPauseScan();
+      break;
+    }
+    case 'toggle-tts': {
+      const vm = narbeVoice();
+      if (vm) {
+        vm.toggleTTS(); // hub-wide; syncs back via onSettingsChange
+      } else {
+        ttsOn = !ttsOn;
+        try { storage.setItem(TTS_KEY, ttsOn ? '1' : '0'); } catch { /* no storage */ }
+        if (ttsCheck) ttsCheck.checked = ttsOn;
+        renderPauseItems();
+      }
       speak(ttsOn ? 'Voice on' : 'Voice off');
       armPauseScan();
       break;
@@ -1008,7 +1125,7 @@ function applyDebugJump() {
       const offer = sampleChoices(run.seed, i);
       run = commitPick(reachStop(run), offer[0], offer);
     }
-    petal.z = trail.zEnd + 22;
+    petal.z = trail.zEnd + 12; // already inside the ceremony trigger zone
   }
 }
 
@@ -1095,7 +1212,18 @@ function loop() {
   );
   render?.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank + windLean, clock.elapsedTime, windLevel);
   if (render) render.renderer.render(render.scene, render.camera);
+  updatePauseBtn();
   requestAnimationFrame(loop);
+}
+
+// On-screen Pause: visible during active play, hidden on menus/dialogs so
+// the scan never has to pass it and it can't be tapped by accident.
+const pauseBtn = document.getElementById('pauseBtn');
+if (pauseBtn) pauseBtn.addEventListener('click', () => openPause());
+function updatePauseBtn() {
+  if (!pauseBtn) return;
+  const show = started && !isTitleOpen && !paused && !isStopOpen && !ceremonyOpen();
+  pauseBtn.hidden = !show;
 }
 requestAnimationFrame(loop);
 
@@ -1199,17 +1327,33 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (ceremonyOpen()) {
-    // Interlude: Space steps the highlight, Enter chooses, Escape rests.
-    if (e.key === ' ') {
-      focusScanItem(scanFocus + 1);
-      e.preventDefault();
-    } else if (e.key === 'Enter') {
-      activateScanItem();
-      e.preventDefault();
-    } else if (e.key === 'Escape') {
-      toTitle();
-      e.preventDefault();
+    // Interlude: Space skips the read / steps the choices, Enter replays or
+    // chooses, Escape rests.
+    if (interludePhase === 'reveal') {
+      if (e.key === ' ') {
+        hushSpeech(); // skip ahead to the send-off
+        startMailing();
+        e.preventDefault();
+      } else if (e.key === 'Enter') {
+        holdScanForSpeech(() => startMailing()); // replay the haiku, then mail
+        e.preventDefault();
+      } else if (e.key === 'Escape') {
+        toTitle();
+        e.preventDefault();
+      }
+    } else if (interludePhase === 'choices') {
+      if (e.key === ' ') {
+        focusScanItem(scanFocus + 1);
+        e.preventDefault();
+      } else if (e.key === 'Enter') {
+        activateScanItem();
+        e.preventDefault();
+      } else if (e.key === 'Escape') {
+        toTitle();
+        e.preventDefault();
+      }
     }
+    // during 'mailing' the keys wait politely for the send-off to finish
     return;
   }
   if (!started && (e.key === ' ' || e.key === 'Enter')) {
@@ -1272,3 +1416,34 @@ btnDoReset.addEventListener('click', doReset);
 
 // Start on load is not automatic; the title screen waits for the player.
 loadProgress();
+// --- Live sync with the hub's shared managers -----------------------------
+// If the player changes scan cadence or voice from the hub (or another game
+// in another tab), Bloom picks it up immediately and re-arms whatever
+// dialog timer is currently running.
+function bindSharedManagers() {
+  const sm = narbeScan();
+  const vm = narbeVoice();
+  if (sm) {
+    sm.subscribe(() => {
+      renderPauseItems();
+      if (isStopOpen && stopTimer) {
+        // Re-arm at the new cadence without re-speaking the current choice.
+        clearInterval(stopTimer);
+        stopTimer = armDialogTimer(() => focusChoice(stopFocus + 1));
+      } else if (paused && pausePage === 'settings') {
+        armPauseScan();
+      } else if (ceremonyOpen() && interludePhase === 'choices') {
+        armInterludeTimer();
+      }
+    });
+  }
+  if (vm) {
+    vm.onSettingsChange((s) => {
+      ttsOn = !!s.ttsEnabled;
+      if (ttsCheck) ttsCheck.checked = ttsOn;
+      try { storage.setItem(TTS_KEY, ttsOn ? '1' : '0'); } catch { /* no storage */ }
+      renderPauseItems();
+    });
+  }
+}
+bindSharedManagers();

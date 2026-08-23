@@ -160,6 +160,19 @@
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* On-screen Pause button (mouse/touch/caregiver access) — pairs the
+     hold-Return gesture so pause is never hold-only. */
+  #pauseBtn {
+    position: fixed; top: 18px; right: 20px; z-index: 26;
+    width: 58px; height: 58px; border-radius: 50%;
+    border: 2.5px solid rgba(90,42,74,0.5); cursor: pointer;
+    background: rgba(255,255,255,0.72); color: #5a2a4a;
+    font-size: 24px; line-height: 1; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(90,42,74,0.18);
+  }
+  #pauseBtn:hover { background: #fff; }
+  #pauseBtn[hidden] { display: none; }
+
   /* Interlude: postcard album + scan actions */
   #ceremony {
     position: fixed; inset: 0; z-index: 28; display: none;
@@ -204,6 +217,40 @@
     margin: 10px 0 2px; font-size: 15px; font-weight: 700;
     letter-spacing: 3px; text-transform: uppercase; color: #8a6238;
   }
+
+  /* Mailbox send-off: after the haiku, the card flies into the mailbox.
+     Cards are mailed away, so past stages are never re-shown. */
+  #mailbox { display: none; position: relative; width: 130px; height: 132px; }
+  #ceremony.mail-time #mailbox { display: block; }
+  .mailBoxBody {
+    position: absolute; bottom: 34px; left: 12px; width: 104px; height: 62px;
+    background: linear-gradient(180deg, #ff9ec7, #ef6ba3);
+    border: 3px solid #5a2a4a; border-radius: 16px 16px 9px 9px;
+  }
+  .mailSlot {
+    position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+    width: 58px; height: 11px; background: #5a2a4a; border-radius: 6px;
+  }
+  .mailFlag {
+    position: absolute; right: -14px; top: -30px; width: 9px; height: 36px;
+    background: #ffb703; border: 2.5px solid #5a2a4a; border-radius: 5px;
+    transform-origin: bottom center; transform: rotate(-72deg);
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #ceremony.mailed .mailFlag { transform: rotate(0deg); }
+  .mailPost {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 13px; height: 38px; background: #c99b63;
+    border: 3px solid #5a2a4a; border-radius: 4px;
+  }
+  /* While the card is being read or mailed, the choices wait offstage. */
+  #ceremony.pre-choices .btnrow, #ceremony.pre-choices .tinyhint { visibility: hidden; }
+  #postcard.mailing { animation: mailAway 1.45s cubic-bezier(0.55, 0.06, 0.68, 0.19) forwards; }
+  @keyframes mailAway {
+    0%   { transform: rotate(-1.2deg) translate(0, 0) scale(1); opacity: 1; }
+    16%  { transform: rotate(2deg) translate(0, -26px) scale(0.97); opacity: 1; }
+    100% { transform: rotate(-9deg) translate(-8px, 46vh) scale(0.14); opacity: 0; }
+  }
   @media (max-width: 640px) {
     #cerTitle { font-size: 30px; margin-right: 70px; }
     #stampBox svg { width: 58px; height: 68px; }
@@ -212,6 +259,10 @@
     #basket { transform: translateY(-50%) rotate(-3deg) scale(0.78); }
   }
 </style>
+<!-- Hub-wide accessibility managers (scan cadence + voice choice). Bloom
+     falls back to local settings if these fail to load. -->
+<script src="../bennyshub/shared/scan-manager.js"></script>
+<script src="../bennyshub/shared/voice-manager.js"></script>
 <script type="importmap">
 {
   "imports": {
@@ -226,6 +277,7 @@
 <div id="hud">
   <span id="hudCount">0 / 0</span>
 </div>
+<button id="pauseBtn" type="button" aria-label="Pause" title="Pause" hidden>⏸</button>
 
 <div id="title">
   <h1>🌸 Bloom</h1>
@@ -285,9 +337,9 @@
   </div>
 </div>
 
-<!-- Interlude: scan the postcards earned this session, then fly on or rest -->
+<!-- Interlude: one fresh postcard — read the haiku, mail it away, then fly on or rest -->
 <div id="ceremony" role="dialog" aria-modal="true" aria-labelledby="interludePos">
-  <p id="interludePos">Postcard 1 of 1</p>
+  <p id="interludePos">Your postcard is ready</p>
   <div id="postcard">
     <h2 id="cerTitle">Meadow No.</h2>
     <div id="postMark" aria-hidden="true">
@@ -311,6 +363,13 @@
   <div class="btnrow">
     <button id="btnFlyOn" class="bigbtn" type="button">Fly on</button>
     <button id="btnRest" class="bigbtn" type="button">Rest here</button>
+  </div>
+  <div id="mailbox" aria-hidden="true">
+    <div class="mailBoxBody">
+      <div class="mailSlot"></div>
+      <div class="mailFlag"></div>
+    </div>
+    <div class="mailPost"></div>
   </div>
   <p class="tinyhint">The highlight wanders on its own — Space steps it, Enter chooses.</p>
 </div>

@@ -36,7 +36,7 @@ No build step. Serve the repo root with any static server, e.g.:
 python3 -m http.server 8000
 ```
 
-then open `http://localhost:8000/flowerpetal/` (or the site root and follow
+then open `http://localhost:8000/bloom/` (or the site root and follow
 the link). It uses three.js r160 from unpkg via an import map, so it needs a
 network connection on first load.
 
@@ -50,7 +50,7 @@ compliance surface.
 | --- | --- | --- | --- |
 | Cherry blossom petal | Voyage (@voyagevoyage_vr) | CC BY 4.0 | https://sketchfab.com/3d-models/cherry-blossom-petal-a1e45d9f9796403ca855a6afa4613627 |
 
-The model ships as `flowerpetal/assets/cherry-blossom-petal.obj` (parsed at
+The model ships as `bloom/assets/cherry-blossom-petal.obj` (parsed at
 runtime into geometry — no GLTF loader needed). The credits list marks it
 "in use" once loaded; the CC BY license is honored by the bundled Credits
 view and this table.
@@ -67,13 +67,13 @@ Pure logic modules (trail generation, growth math, save/load, steering,
 meadow lifecycle, pitch ladder) are unit-tested with Node's built-in runner:
 
 ```bash
-node --test 'flowerpetal/test/*.test.js'
+node --test 'bloom/test/*.test.js'
 ```
 
 ## Structure
 
 ```
-flowerpetal/
+bloom/
   index.html          # page, HUD, title card, import map
   src/
     main.js           # boot, game loop, input, collection, meadows (thin glue)

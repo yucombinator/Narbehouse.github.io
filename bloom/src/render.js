@@ -829,6 +829,11 @@ export function initRender(canvas) {
   let stemMeshes = [];
   let budData = [];
   let budTimes = [];
+  // Bloom-on-pass: every bud starts closed and opens as the petal flies near
+  // it, then stays open for the rest of the visit. Fresh meadow = fresh buds.
+  let budOpen = []; // 0 = closed, 1 = fully bloomed (latched)
+  const BLOOM_NEAR = 9;   // distance at which blooming starts
+  const BLOOM_FAR = 26;   // fully open when closer than this
   let budLocal = [];
   const pops = [];
   const ringPool = [];
@@ -1028,6 +1033,10 @@ export function initRender(canvas) {
     resetTrail() {
       trailHistory.length = 0;
     },
+    // How many buds have finished their bloom-on-pass (for tests/debug).
+    budsOpened() {
+      return budOpen.reduce((n, v) => n + (v > 0.9 ? 1 : 0), 0);
+    },
     setStopMarkers(points) {
       for (const s of stopMarkers) {
         scene.remove(s);
@@ -1219,14 +1228,22 @@ export function initRender(canvas) {
               }
             }
           } else {
-            const sc = 1 + Math.sin(timeSec * 2.5 + i) * 0.06;
-            dummy.position.set(b.x, crownY, b.z);
+            // Bloom-on-pass: ease this bud's openness toward its target.
+            // Close petal => open; once open it stays open for the visit.
+            if (budOpen[i] < 1) {
+              const d = Math.hypot(b.x - petalPos.x, b.z - petalPos.z);
+              const want = THREE.MathUtils.clamp(1 - (d - BLOOM_NEAR) / (BLOOM_FAR - BLOOM_NEAR), 0, 1);
+              budOpen[i] = Math.min(1, budOpen[i] + Math.max(want, 0) * dt * 1.4);
+            }
+            const open = budOpen[i];
+            const sc = (0.42 + 0.58 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
+            dummy.position.set(b.x, crownY - (1 - open) * 0.5, b.z);
             dummy.scale.setScalar(sc * KIND_SCALE[kind]);
             if (stemMesh) {
               const sd = new THREE.Object3D();
               sd.position.set(b.x, ground, b.z);
-              sd.rotation.z = Math.sin(timeSec * 1.6 + i) * 0.04; // gentle sway
-              sd.scale.set(1, STEM_LEN, 1);
+              sd.rotation.z = Math.sin(timeSec * 1.6 + i) * 0.04 * open; // gentle sway
+              sd.scale.set(0.7 + 0.3 * open, STEM_LEN * (0.55 + 0.45 * open), 0.7 + 0.3 * open);
               sd.updateMatrix();
               stemMesh.setMatrixAt(local, sd.matrix);
             }
@@ -1350,6 +1367,7 @@ export function initRender(canvas) {
   function scaleBuds(buds) {
     budData = buds;
     budTimes = buds.map(() => null);
+    budOpen = buds.map(() => 0); // all closed at the start of a visit
     budLocal = buds.map(() => 0);
     const perKind = KIND_GEOMETRIES.map(() => []);
     buds.forEach((b, i) => {

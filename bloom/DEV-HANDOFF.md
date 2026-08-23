@@ -2,7 +2,7 @@
 
 **Written:** 2026-08-22 · **Branch:** `petal-bloom` (13 commits + uncommitted fix batch) · **Status:** playable, tests green, one uncommitted batch of fixes in the working tree
 
-This file is the working agreement for anyone (human or agent) who continues building in this game. Read it before touching `flowerpetal/`. It records what exists, why it is shaped the way it is, and the accessibility constraints that are load-bearing — not decoration.
+This file is the working agreement for anyone (human or agent) who continues building in this game. Read it before touching `bloom/`. It records what exists, why it is shaped the way it is, and the accessibility constraints that are load-bearing — not decoration.
 
 ---
 
@@ -12,17 +12,17 @@ A Flower-like ([Flower, thegame](https://en.wikipedia.org/wiki/Flower_(video_gam
 
 > You are a flower petal **always moving forward at a preset speed**. Hold **LEFT** or **RIGHT** to bank and steer. Follow a glowing trail of flower buds; every bud you float through is collected, pops, and **grows you bigger** (diminishing curve, hard cap). At the trail's end a **mother bloom** waits; touching it regenerates a brand-new random meadow of buds. Endless. No fail state. You never shrink.
 
-Served at: **`http://127.0.0.1:8000/flowerpetal/`** (local static server `narbe-site` on port 8000; repo root is `/Users/yucombinator/dev/Narbehouse.github.io`).
+Served at: **`http://127.0.0.1:8000/bloom/`** (local static server `narbe-site` on port 8000; repo root is `/Users/yucombinator/dev/Narbehouse.github.io`).
 
 ## 2. How to run / verify
 
 - Serve the repo root: `python3 -m http.server 8000` (from `~/dev/Narbehouse.github.io`).
-- Play: `http://127.0.0.1:8000/flowerpetal/`
+- Play: `http://127.0.0.1:8000/bloom/`
 - Unit tests (pure logic only — no three.js/DOM/WebAudio):
 
   ```bash
   cd ~/dev/Narbehouse.github.io
-  node --test 'flowerpetal/test/*.test.js'   # 33 tests, all green
+  node --test 'bloom/test/*.test.js'   # 33 tests, all green
   ```
 
 - No build step, no npm, no bundler. three.js r160 loads from unpkg via the importmap in `index.html` (needs network on first load).
@@ -30,7 +30,7 @@ Served at: **`http://127.0.0.1:8000/flowerpetal/`** (local static server `narbe-
 ## 3. File map
 
 ```
-flowerpetal/
+bloom/
   index.html           # page shell: canvas, HUD (buds/total + size ring), title card,
                        #   two-step reset confirm, importmap for three.js
   README.md            # user-facing quick start + controls (keep in sync)
@@ -100,7 +100,7 @@ The tension, stated plainly: *pursuit-and-hold games are accessible to a differe
 
 ## 7. Recent fixes (THIS IS THE CURRENT WORKING TREE — not yet committed)
 
-The following are **modified but uncommitted** in `flowerpetal/` right now (`git status` shows them). They fix the three complaints: *"movement broken / not moving forward", "controls felt inverted", "petal small", "don't look like flowers"*.
+The following are **modified but uncommitted** in `bloom/` right now (`git status` shows them). They fix the three complaints: *"movement broken / not moving forward", "controls felt inverted", "petal small", "don't look like flowers"*.
 
 1. **Forward motion.** `render.js` previously pinned the petal at `z=0` and the camera never advanced; the world was frozen and the sim collected buds "telepathically". Now: `frame(dt, {x,y,z}, …)` places the petal at real z; camera trails `petal.z + 11` and looks `petal.z − 30`; sky/ground/clouds track the camera so the world visibly scrolls.
 2. **Direction flip (controls).** The whole scene now flies **toward −z** (three.js's native forward). Trail: `zStart = 40` descending to `zEnd`; `steer.advance` moves `z −= speed·cos(bank)·dt`; camera at `petal.z + 11` looking toward `−petal.z`. LEFT = −x = screen-left, RIGHT = +x = screen-right. **This required updating two unit tests** (`steer.test.js`, `trail.test.js`) — they now assert descending z. All 33 still pass.
@@ -113,8 +113,8 @@ The direction flip + flower meshes + camera rig are **unit-verified** (33/33) an
 
 ```text
 1. git status → confirm the 6 modified paths above.
-2. node --test 'flowerpetal/test/*.test.js' → expect 33 pass.
-3. Browser at http://127.0.0.1:8000/flowerpetal/: click Start;
+2. node --test 'bloom/test/*.test.js' → expect 33 pass.
+3. Browser at http://127.0.0.1:8000/bloom/: click Start;
    assert the flower drifts forward (its z decreases), RIGHT visibly turns screen-right,
    LEFT screen-left, flowers-not-spheres in the screenshot, console clean.
 4. Commit the batch when green: "fix(petal-bloom): -z flight, screen-correct banking,

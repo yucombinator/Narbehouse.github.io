@@ -26,7 +26,7 @@ test('same seed -> identical trail; different seed -> different trail', () => {
   assert.notDeepEqual(t1.buds, t3.buds);
 });
 
-test('buds come in bunches of 3-6 with sparse gaps between groups', () => {
+test('buds come in sparse bunches with long gaps between groups', () => {
   const t = generateTrail(DEFAULT);
   // Group consecutive buds by cluster id (buds are z-sorted, clusters contiguous).
   const groups = new Map();
@@ -43,8 +43,8 @@ test('buds come in bunches of 3-6 with sparse gaps between groups', () => {
       assert.ok(d <= CLUSTER_RADIUS * 2 + 1e-6, `cluster ${id} spread ${d}`);
     }
   }
-  // A meadow has a sensible number of bunches.
-  assert.ok(groups.size >= 6 && groups.size <= 16, `clusters ${groups.size}`);
+  // A meadow has a handful of bunches — sparse, with long empty stretches.
+  assert.ok(groups.size >= 3 && groups.size <= 10, `clusters ${groups.size}`);
 });
 
 test('bunches are spaced apart (no giant merged clump)', () => {
