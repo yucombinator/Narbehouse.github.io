@@ -611,7 +611,7 @@ export function initRender(canvas) {
       const target = new THREE.Vector3(
         petalPos.x * 0.6 * zoom - camera.rotation.y * windIntensity,
         petalPos.y * 0.55 + 4.2 + windIntensity * 2.4,
-        petalPos.z + 11 * zoom
+        petalPos.z + 15 * zoom
       );
       camera.position.lerp(target, 1 - Math.pow(0.0015, dt));
       camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30 - windIntensity * 10);
