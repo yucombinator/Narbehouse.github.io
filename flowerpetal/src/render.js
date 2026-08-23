@@ -94,6 +94,8 @@ export function initRender(canvas) {
     c.position.set((Math.random() - 0.5) * 220, 24 + Math.random() * 26, (Math.random() - 0.5) * 180);
     c.scale.y = 0.35;
     c.userData.speed = 0.4 + Math.random() * 0.7;
+    c.userData.zo = (Math.random() - 0.5) * 160;
+    c.position.z = c.userData.zo;
     scene.add(c);
     clouds.push(c);
   }
@@ -132,7 +134,7 @@ export function initRender(canvas) {
       petalMat.emissive.copy(c).multiplyScalar(0.55);
     },
     frame(dt, petalPos, bank, timeSec) {
-      petal.position.set(petalPos.x, petalPos.y, 0);
+      petal.position.set(petalPos.x, petalPos.y, petalPos.z);
       petal.rotation.z = bank * 0.6;
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
 
@@ -183,16 +185,20 @@ export function initRender(canvas) {
         mother.rotation.y += dt * 0.4;
       }
 
-      // Drift clouds slowly; wrap around the player.
+            // Sky dome, ground, and clouds travel with the camera so the world
+      // visibly scrolls forward as the petal flies down the trail.
+      sky.position.copy(camera.position);
+      ground.position.set(0, -3, camera.position.z);
       for (const c of clouds) {
         c.position.x += c.userData.speed * dt;
         if (c.position.x > 140) c.position.x = -140;
+        c.position.z = camera.position.z + c.userData.zo;
       }
 
-      // Camera trails behind and above the petal.
-      const target = new THREE.Vector3(petalPos.x * 0.6, petalPos.y * 0.55 + 4.2, -13);
+      // Camera trails behind and above the petal and always looks ahead.
+      const target = new THREE.Vector3(petalPos.x * 0.6, petalPos.y * 0.55 + 4.2, petalPos.z - 13);
       camera.position.lerp(target, 1 - Math.pow(0.0015, dt));
-      camera.lookAt(petal.position.x * 0.9, petal.position.y * 0.9, 12);
+      camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z + 30);
     },
   };
 

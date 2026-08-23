@@ -252,7 +252,7 @@ function loop() {
   bloomCheck();
   render.setPetalSize(size);
   render.setPetalTint(tintFor((size - 1) / (MAX_SIZE - 1)));
-  render.frame(dt, { x: petal.x, y: petal.y }, petal.bank, clock.elapsedTime);
+  render.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank, clock.elapsedTime);
   render.renderer.render(render.scene, render.camera);
   requestAnimationFrame(loop);
 }
