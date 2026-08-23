@@ -89,7 +89,7 @@ export function buildGrassClumpGeometry() {
 export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   const hp = hillsParams;
   const TIER1_COUNT = 18000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
-  const TIER2_COUNT = 18000; // Mid domain (180m x 180m) - sweeping rolling meadows (~1.3m spacing)
+  const TIER2_COUNT = 18000; // Mid domain (260m x 260m) - sweeping rolling meadows (~1.9m spacing)
   const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT; // 36,000 clumps = 180,000 grass blades
 
   const bladeBaseGeo = buildGrassClumpGeometry();
@@ -158,15 +158,15 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
     }
   }
 
-  // 2. Tier 2 (Mid Rolling Field): 18,000 clumps across 180m x 180m box
+  // 2. Tier 2 (Mid Rolling Field): 18,000 clumps across 260m x 260m box
   const t2End = TIER1_COUNT + TIER2_COUNT;
   const t2Grid = Math.ceil(Math.sqrt(TIER2_COUNT));
-  const t2Cell = 180.0 / t2Grid;
+  const t2Cell = 260.0 / t2Grid;
   for (let gx = 0; gx < t2Grid && gIdx < t2End; gx++) {
     for (let gz = 0; gz < t2Grid && gIdx < t2End; gz++) {
-      const ox = -90.0 + (gx + gRand() * 0.92 + 0.04) * t2Cell;
-      const oz = -90.0 + (gz + gRand() * 0.92 + 0.04) * t2Cell;
-      populateClump(gIdx, ox, oz, 180.0, 1.15);
+      const ox = -130.0 + (gx + gRand() * 0.92 + 0.04) * t2Cell;
+      const oz = -130.0 + (gz + gRand() * 0.92 + 0.04) * t2Cell;
+      populateClump(gIdx, ox, oz, 260.0, 1.15);
       gIdx++;
     }
   }
@@ -284,7 +284,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
 
         // Smooth edge fade towards boundary of Tier 2 domain
         float distFromCenter = length(vec2(wx - center.x, wz - center.y));
-        float edgeFade = L > 80.0 ? clamp((90.0 - distFromCenter) / 25.0, 0.0, 1.0) : 1.0;
+        float edgeFade = L > 80.0 ? clamp((130.0 - distFromCenter) / 40.0, 0.0, 1.0) : 1.0;
         vEdgeFade = edgeFade;
 
         // Blade attributes and height parameter:
