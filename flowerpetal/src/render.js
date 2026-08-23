@@ -265,7 +265,7 @@ const PETAL_FRAGMENT_SHADER = `
     float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.6) * 0.45;
 
     // Emissive glow (ramps up on collection/size growth)
-    vec3 emissive = uColor * (0.18 + uGlow * 0.75);
+    vec3 emissive = uColor * (0.10 + uGlow * 0.30);
 
     vec3 finalColor = baseColor * (skyLight + sunLight) + emissive + vec3(1.0, 0.96, 0.90) * fresnel;
 
@@ -913,8 +913,8 @@ export function initRender(canvas) {
       rebuildPetals();
     },
     setPetalGlow(progress) {
-      currentGlow = progress;
-      for (const mat of petalMats) mat.uniforms.uGlow.value = currentGlow;
+      currentGlow = Math.min(1, Math.max(0, progress));
+      for (const mat of petalMats) mat.uniforms.uGlow.value = currentGlow * 0.6;
     },
     // Swap in the loaded 3D petal (CC-BY cherry blossom). Applied to every
     // petal on the next rebuild; the procedural one is used until then.
