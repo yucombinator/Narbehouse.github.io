@@ -150,20 +150,24 @@ export function initRender(canvas) {
       // Each petal tumbles on its own: distinct orbit radius, speed, phase,
       // breathing and tumble rates, so the swarm churns instead of rotating
       // as a rigid circle.
+      // Petals are scattered through a loose 3D ball — distinct x/y/z origins
+      // (z depth included) so they swirl as a swarm without stacking flat.
       m.userData = {
         orbit: Math.random() * Math.PI * 2,
         dir: Math.random() < 0.5 ? -1 : 1,
         speed: 0.4 + Math.random() * 0.9,
-        radius0: PETAL_RING_R * (0.85 + Math.random() * 0.75),
-        flat: 0.7 + Math.random() * 0.6,
+        radius0: 0.28 + Math.random() * 0.85,      // wider radial spread
+        flat: 0.45 + Math.random() * 0.85,        // flatter/slanted orbit plane
+        z0: (Math.random() - 0.5) * 1.15,          // distinct depth per petal
+        zdepth: 0.35 + Math.random() * 0.55,
         ph0: Math.random() * Math.PI * 2,
         breathe: 0.6 + Math.random() * 1.0,
         tumble: 1.1 + Math.random() * 1.6,
       };
       m.position.set(
         Math.cos(m.userData.ph0) * m.userData.radius0,
-        Math.sin(m.userData.ph0) * m.userData.radius0,
-        0
+        Math.sin(m.userData.ph0) * m.userData.radius0 * m.userData.flat + (Math.random() - 0.5) * 0.4,
+        m.userData.z0
       );
       petalRing.add(m);
       petalMeshes.push(m);
@@ -291,10 +295,12 @@ export function initRender(canvas) {
         // Orbit advances; wind speeds it up and drifts the phase downstream.
         u.orbit += dt * u.dir * u.speed * (0.6 + Math.abs(windBias)) + windBias * dt * 1.3;
         const rad = u.radius0 * (1 + 0.28 * Math.sin(timeSec * u.breathe + u.ph0));
-        // Elliptical sway, not a true circle.
+        // Elliptical sway, not a true circle; z bobs on its own depth so
+        // petals pass in front of and behind each other instead of stacking.
         const px = Math.cos(u.orbit) * rad;
         const py = Math.sin(u.orbit) * rad * u.flat + 0.18 * Math.sin(timeSec * u.tumble + u.ph0);
-        m.position.set(px, py, 0);
+        const pz = u.z0 + Math.sin(timeSec * 1.3 + u.orbit * 3) * u.zdepth;
+        m.position.set(px, py, pz);
         // Tumble: spin around the petal's long axis and wobble face-on.
         m.rotation.z = Math.sin(u.orbit + u.ph0) * 0.5 + Math.sin(timeSec * u.tumble + u.ph0) * 0.28;
         m.rotation.x = windBias * 0.7 + Math.sin(timeSec * 1.9 + u.ph0) * 0.22;
