@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=21';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=22';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=5';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
@@ -60,42 +60,29 @@ function bindHold(el, key) {
 // Controls are deliberately minimal: Space and Enter are the only keys the
 // game ever asks for. The whole screen is also the button (tap the left or
 // right half to steer) for touch users. No Arrow/WASD keys, ever.
-
-function userGust() {
-  // Summon an updraft right now: a warmer, quicker arc than the ambient ones,
-  // with audible + visual feedback so the command is clearly acknowledged.
-  gust.active = true;
-  gust.t = 0;
-  gust.dur = 2.8;
-  gust.peak = 6;
-  gust.user = true;
-  gust.next = 8 + Math.random() * 8; // give the ambient cycle fresh air
-  audio?.whoosh?.();
-  render?.setGust?.(1);
-}
-
-// Enter does double duty in flight: a quick tap calls a gust, holding it for
-// a beat opens Pause. (Escape also opens Pause; the on-screen ⏸ button too.)
+//
+// One wind command only: holding Space rides a burst of wind (speed + a soft
+// whoosh + a surge of trailing bubbles). Enter is never a second speed key —
+// in flight it does nothing on a tap and opens Pause on a long press.
 let gustHoldTimer = null;
-let enterArmed = false;
 
-// Capture phase: runs BEFORE the dialog handlers on document, so an Enter
-// that a dialog consumes (start / stop / ceremony / pause) is never misread
-// as a flight gust or pause-reopen afterwards.
 window.addEventListener('keydown', (e) => {
 	// While the title screen is up, Space/Enter belong to Start.
 	if (isTitleOpen || paused) return;
 	// While a meadow stop or ceremony is open, keys belong to those dialogs.
-	if (isStopOpen || ceremonyOpen()) return;
-	// Holding Space rides a gentle burst of wind — flight only, never needed.
+	if (isStopOpen || ceremonyOpen() || resting) return;
+	// Holding Space rides a gentle burst of wind — the one speed-up in the
+	// game, flight only, never needed. The whoosh acknowledges the command.
 	if (e.key === ' ' && started && run.phase === 'FLYING') {
-		if (!e.repeat) boostHeld = true;
+		if (!e.repeat) {
+			boostHeld = true;
+			audio?.whoosh?.();
+		}
 		e.preventDefault();
 	}
-	// Enter: arm a gust; a long press becomes Pause instead.
+	// Enter: a long press opens Pause (Escape and the ⏸ button do too).
 	if (e.key === 'Enter' && started && (run.phase === 'FLYING' || run.phase === 'DRIFTING')) {
 		if (!e.repeat) {
-			enterArmed = true;
 			clearTimeout(gustHoldTimer);
 			gustHoldTimer = setTimeout(() => {
 				if (!paused && !isStopOpen && !ceremonyOpen()) openPause();
@@ -109,15 +96,6 @@ window.addEventListener('keyup', (e) => {
   if (e.key === 'Enter') {
     clearTimeout(gustHoldTimer);
     gustHoldTimer = null;
-    // Only a tap that was armed in flight summons a gust — a ceremony Enter
-    // (reveal / choose / fly-on) is never misread as one.
-    if (enterArmed) {
-      enterArmed = false;
-      if (!paused && !isStopOpen && !ceremonyOpen() &&
-          (run.phase === 'FLYING' || run.phase === 'DRIFTING')) {
-        userGust();
-      }
-    }
   }
 });
 
@@ -299,7 +277,7 @@ window.__petalGame = {
     render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
-    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel, gust: gust.active, gustUser: gust.user, paused };
+    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel, gust: gust.active, paused, resting };
   },
   bud(i) {
     return trail.buds[i]
@@ -805,6 +783,7 @@ function closeInterlude() {
 
 function toTitle() {
   closeInterlude();
+  closeRest();
   started = false;
   isTitleOpen = true;
   titleEl.style.display = '';
@@ -841,8 +820,81 @@ if (btnFlyOn) btnFlyOn.addEventListener('click', () => { if (ceremonyOpen() && i
 if (btnRest) btnRest.addEventListener('click', () => { if (ceremonyOpen() && interludePhase === 'choices') activateScanItemAt('rest'); });
 function activateScanItemAt(act) {
   if (act === 'send') startMailing();
-  else toTitle();
+  else openRest(); // "Rest here": a scenic rest point, not a menu
 }
+
+// --- Rest point -----------------------------------------------------------
+// Resting keeps the whole world in view: the petal settles into a gentle
+// hover, the grass sways on, and a translucent card shows everything you've
+// gathered. You leave on your own terms (Continue the hike) or go home.
+const restEl = document.getElementById('rest');
+const restTitleEl = document.getElementById('restTitle');
+const restSubEl = document.getElementById('restSub');
+const restBasketEl = document.getElementById('restBasket');
+const btnRestOn = document.getElementById('btnRestOn');
+const btnRestMenu = document.getElementById('btnRestMenu');
+let resting = false;
+let restFocus = 0;
+let restTimer = null;
+
+function openRest() {
+  if (resting) return;
+  resting = true;
+  closeInterlude();
+  const theme = MEADOW_THEMES[((stageIndex % MEADOW_THEMES.length) + MEADOW_THEMES.length) % MEADOW_THEMES.length];
+  restTitleEl.textContent = `Resting at ${theme.name}`;
+  const n = basketPicks.length;
+  restSubEl.textContent = n === 0
+    ? 'The grass sways; the day waits for you.'
+    : `${n} wildflower${n === 1 ? '' : 's'} so far. The day waits for you.`;
+  restBasketEl.innerHTML = basketSvg(150, 132);
+  const blooms = restBasketEl.querySelector('#basketBlooms');
+  if (blooms) {
+    blooms.innerHTML = '';
+    basketPicks.forEach((id, i) =>
+      blooms.insertAdjacentHTML('beforeend', bloomInBasketSvg(flowerById(id), i)));
+  }
+  hushSpeech();
+  restEl.classList.add('show');
+  focusRest(0, true);
+  speak(`Rest well. ${n} wildflower${n === 1 ? '' : 's'} so far.`);
+}
+
+function focusRest(k, silent = false) {
+  const btns = [btnRestOn, btnRestMenu];
+  const n = btns.length;
+  restFocus = ((k % n) + n) % n;
+  btns.forEach((b, i) => b.classList.toggle('scanFocused', i === restFocus));
+  clearInterval(restTimer);
+  restTimer = armDialogTimer(() => focusRest(restFocus + 1));
+  if (!silent) speak(btns[restFocus].textContent, 1);
+}
+
+function closeRest() {
+  if (!resting) return;
+  resting = false;
+  clearInterval(restTimer);
+  restEl.classList.remove('show');
+  hushSpeech();
+}
+
+function continueHike() {
+  closeRest();
+  if (stageIndex < TOTAL_STAGES) {
+    flyNextStage();
+  } else {
+    toast('You reached the summit. Rest well.');
+    speak('Every wildflower is gathered. Rest well.');
+    toTitle();
+  }
+}
+
+function menuFromRest() {
+  closeRest();
+  toTitle();
+}
+if (btnRestOn) btnRestOn.addEventListener('click', continueHike);
+if (btnRestMenu) btnRestMenu.addEventListener('click', menuFromRest);
 
 // --- Pause menu (hold Return anywhere in gameplay) ------------------------
 const pauseEl = document.getElementById('pause');
@@ -899,7 +951,7 @@ function armPauseScan() {
 }
 
 function openPause() {
-  if (paused || !started || isTitleOpen || isStopOpen || ceremonyOpen()) return;
+  if (paused || !started || isTitleOpen || isStopOpen || ceremonyOpen() || resting) return;
   paused = true;
   input.left = false;
   input.right = false;
@@ -1083,17 +1135,17 @@ function addStopSpill(t) {
       const z = stopZs[i] + 4 + rng() * 14;
       const x = t.pointAt(z).x + (rng() - 0.5) * 6.5;
       const f = offers[Math.floor(rng() * offers.length)];
-      extra.push({
-        x,
-        y: HILLS.height(x, z) + 2.4,
-        z: z + (rng() - 0.5) * 2.5,
-        colorHex: parseInt(f.petalHex.slice(1), 16),
-        speciesId: f.id,
-        scale: speciesScale(f.id) * 0.85,
-        kind: variantForShape(f.shape),
-        kindIndex: 0,
-        cluster: -(i + 1), // sentinel: spill bud for stop i
-      });
+extra.push({
+          x,
+          y: HILLS.height(x, z) + 2.4,
+          z: z + (rng() - 0.5) * 2.5,
+          colorHex: parseInt(f.petalHex.slice(1), 16),
+          speciesId: f.id,
+          scale: speciesScale(f.id) * 1.0,
+          kind: variantForShape(f.shape),
+          kindIndex: 0,
+          cluster: -(i + 1), // sentinel: spill bud for stop i
+        });
     }
   }
   t.buds.push(...extra);
@@ -1124,7 +1176,7 @@ function addStopFlowers(t) {
           z,
           colorHex: parseInt(f.petalHex.slice(1), 16),
           speciesId: f.id,
-          scale: speciesScale(f.id) * 1.15,
+          scale: speciesScale(f.id) * 2.0,
           kind: variantForShape(f.shape),
           kindIndex: 0,
           cluster: -(i + 1),
@@ -1252,7 +1304,7 @@ function elasticCenter(dt) {
 // --- Gust riding -----------------------------------------------------------
 // Every so often a warm updraft slides under the petal and carries it in a
 // slow arc — no input asked, nothing to do but ride it. Pure ambience.
-const gust = { next: 7 + Math.random() * 8, active: false, t: 0, dur: 0, peak: 0, user: false };
+const gust = { next: 7 + Math.random() * 8, active: false, t: 0, dur: 0, peak: 0 };
 
 function gustUpdate(dt) {
   if (!gust.active) {
@@ -1268,7 +1320,6 @@ function gustUpdate(dt) {
   gust.t += dt;
   if (gust.t >= gust.dur) {
     gust.active = false;
-    gust.user = false;
     gust.next = 9 + Math.random() * 9;
     return 0;
   }
@@ -1281,17 +1332,18 @@ function loop() {
   const wind = windAt(clock.elapsedTime, meadowSeed);
   // The world holds its breath while Ben chooses a flower, watches the
   // ceremony, or pauses; ambient petals keep swaying gently in the background.
-  const frozen = paused || isStopOpen || run.phase === 'CEREMONY' || run.phase === 'DONE';
+  const frozen = paused || isStopOpen || resting || run.phase === 'CEREMONY' || run.phase === 'DONE';
   let gustLift = 0;
   if (!frozen) {
     gustLift = gustUpdate(dt);
     // Space burst: eased so engaging/release reads as wind strength, not a gear.
+    // Space burst: eased so engaging/release reads as wind strength, not a
+    // gear. It is the one wind command — the surge of trailing bubbles rides
+    // with it so the burst is unmistakable.
     boostLevel += ((boostHeld ? 1 : 0) - boostLevel) * Math.min(1, dt * 3);
     render?.setBoost?.(boostLevel);
-    // A summoned gust is a stronger push than an ambient ride — and the fx
-    // level tells the renderer to surge its trailing bubbles.
-    render?.setGust?.(gust.active ? 1 : 0);
-    const gustFactor = gust.active ? (gust.user ? 1.15 : 1.06) : 1;
+    render?.setGust?.(boostHeld ? 1 : 0);
+    const gustFactor = gust.active ? 1.06 : 1;
     const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor * gustFactor * (1 + 0.38 * boostLevel) }, input.left, input.right);
     petal = { x: m.x + wind.swayVx * dt, z: m.z, y: petal.y + wind.bobY * dt, bank: m.bank };
     // The gust adds its lift to the altitude target, so the existing ease
@@ -1311,6 +1363,8 @@ function loop() {
       openCeremony();
     }
   }
+  // While resting the petal settles into a slow hover above the grass.
+  if (resting) petal.y = flightTargetY() + 0.7 * Math.sin(clock.elapsedTime * 1.3);
   render?.setPetalSize(size);
   render?.setPetalGlow((size - 1) / (MAX_SIZE - 1));
   const windLean = Math.max(-0.3, Math.min(0.3, wind.swayVx * 0.3));
@@ -1415,6 +1469,21 @@ document.addEventListener('keydown', (e) => {
     if (paused) closePause();
     else if (started && !isStopOpen && !ceremonyOpen()) openPause();
     else closeConfirm();
+  }
+  // Rest point: Space steps between the two gentle choices, Enter picks,
+  // Escape gets up and carries on.
+  if (resting) {
+    if (e.key === ' ') {
+      focusRest(restFocus + 1);
+      e.preventDefault();
+    } else if (e.key === 'Enter') {
+      if (!e.repeat) (restFocus === 0 ? continueHike() : menuFromRest());
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      continueHike();
+      e.preventDefault();
+    }
+    return;
   }
   // Pause menu: Space steps, Enter chooses.
   if (paused) {

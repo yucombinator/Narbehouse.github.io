@@ -123,6 +123,34 @@
   }
   .flowerCard:focus-visible { outline: none; }
 
+  /* Rest point: a translucent card over the living meadow, not a menu */
+  #rest {
+    position: fixed; inset: 0; z-index: 14; display: none;
+    flex-direction: column; align-items: center; justify-content: flex-end;
+    padding-bottom: 7vh; pointer-events: none;
+  }
+  #rest.show { display: flex; }
+  #restInner {
+    pointer-events: auto;
+    background: rgba(255, 250, 240, 0.72);
+    border-radius: 26px; padding: 20px 34px 16px;
+    box-shadow: 0 10px 36px rgba(70, 48, 24, 0.22);
+    text-align: center; max-width: min(92vw, 620px);
+    backdrop-filter: blur(3px);
+  }
+  #restTitle { color: #4a3a28; font-size: 27px; margin: 0 0 4px; }
+  #restSub { color: #6a5a42; font-size: 16px; margin: 0 0 12px; font-style: italic; }
+  #restBasket { display: flex; justify-content: center; margin: 0 auto 12px; max-width: 460px; }
+  #restBasket svg { width: 120px; height: auto; }
+  #restBasket .bloom-pop { animation: none; } /* settled, not popping */
+  #restBasket .bloom-pop { opacity: 1; }
+  #rest .btnrow { justify-content: center; }
+  #rest .bigbtn.scanFocused {
+    border-color: #ffb05c;
+    box-shadow: 0 0 0 5px #ffe3c2;
+    transform: scale(1.04);
+  }
+
   /* Basket HUD (right edge): shaded wicker, blooms pop in */
   #basket {
     position: fixed; right: 14px; top: 50%;
@@ -289,7 +317,7 @@
   <p>Fly with the wind.<br>
      Stop and smell the roses.<br>
      Fill your basket with wildflowers.<br>
-     Hold Space for a burst of wind — Enter calls a gust.</p>
+     Hold Space for a burst of wind.</p>
   	  <div class="btnrow">
 	    <button id="btnStart" class="bigbtn grow" type="button">Start</button>
 	    <button id="btnReset" class="bigbtn" type="button">Reset progress</button>
@@ -380,6 +408,22 @@
   <p class="tinyhint">The highlight wanders on its own — Space steps it, Enter chooses.</p>
 </div>
 
-<script type="module" src="./src/main.js?v=26"></script>
+<!-- Rest point: a quiet stop on the hike — the meadow stays in view behind a
+     light panel, swaying grass + everything you've gathered, until you choose
+     to carry on. Not a menu; a place to breathe. -->
+<div id="rest" role="dialog" aria-modal="false" aria-labelledby="restTitle">
+  <div id="restInner">
+    <h2 id="restTitle">A good place to rest</h2>
+    <p id="restSub">The grass sways; the day waits for you.</p>
+    <div id="restBasket" aria-hidden="true"></div>
+    <div class="btnrow">
+      <button id="btnRestOn" class="bigbtn" type="button">Continue the hike</button>
+      <button id="btnRestMenu" class="bigbtn" type="button">Main menu</button>
+    </div>
+    <p class="tinyhint">The highlight moves on its own — Space steps it, Enter chooses.</p>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js?v=27"></script>
 </body>
 </html>

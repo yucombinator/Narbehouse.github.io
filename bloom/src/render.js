@@ -492,12 +492,12 @@ const SHAPE_LAYERS = {
     { tilt: 0.2, r: 1.08 },
   ],
   bell: [ // nodding bell: narrow petals held high
-    { tilt: 1.25, r: 0.95, narrow: 0.62 },
-    { tilt: 1.0, r: 0.7, off: 0.5, narrow: 0.62, z: -0.05 },
+    { tilt: 1.25, r: 0.95, narrow: 0.74 },
+    { tilt: 1.0, r: 0.7, off: 0.5, narrow: 0.74, z: -0.05 },
   ],
   spike: [ // lupine spire: tight upright tiers climbing a stem
-    { tilt: 1.15, r: 0.6, narrow: 0.55 },
-    { tilt: 1.35, r: 0.4, narrow: 0.5, off: 0.5, z: -0.05 },
+    { tilt: 1.15, r: 0.6, narrow: 0.7 },
+    { tilt: 1.35, r: 0.4, narrow: 0.64, off: 0.5, z: -0.05 },
   ],
   puff: [ // soft pompom: three short rounded tiers
     { tilt: 0.5, r: 0.95 },
@@ -530,9 +530,9 @@ function buildFlowerGeometry({ shape = 'daisy', petalRadius = 0.5, centerRadius 
 }
 
 const KIND_GEOMETRIES = FLOWER_VARIANTS.map((k) =>
-  buildFlowerGeometry({ shape: k.shape, petalRadius: 0.5, centerRadius: k.bigCenter, petals: k.petals, spread: k.spread })
+  buildFlowerGeometry({ shape: k.shape, petalRadius: 0.68, centerRadius: k.bigCenter, petals: k.petals, spread: k.spread })
 );
-const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.15, centerRadius: 0.5, petals: 8, spread: 1.25 });
+const MOTHER_FLOWER = buildFlowerGeometry({ petalRadius: 1.35, centerRadius: 0.5, petals: 8, spread: 1.25 });
 
 // A small lanceolate leaf blade (pointed at both ends), drooping slightly.
 function buildLeaf() {
@@ -1546,7 +1546,7 @@ export function initRender(canvas) {
             // Closed buds still read as flowers: a generous floor scale and
             // only a slight sink keep petal shapes visible across the meadow
             // (they were dots at the old 42% floor).
-            const sc = (0.78 + 0.22 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
+            const sc = (0.95 + 0.05 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
             dummy.position.set(b.x, crownY - (1 - open) * 0.18, b.z);
             dummy.scale.setScalar(sc * KIND_SCALE[kind] * (b.scale ?? 1));
             if (stemMesh) {
@@ -1637,24 +1637,23 @@ export function initRender(canvas) {
       breathGeo.attributes.aSize.needsUpdate = true;
       breathGeo.attributes.aAlpha.needsUpdate = true;
 
-      // Camera trails behind (larger z) and above the petal, looking ahead.
-      // While steering (windIntensity up), pull the camera back so the POV
-      // zooms out and the whole wind effect is in frame.
-      const zoom = 1 + windIntensity * 1.6 + gustFx * 0.8;
-      const target = new THREE.Vector3(
-        petalPos.x * 0.6 * zoom - camera.rotation.y * windIntensity,
-        petalPos.y * 0.55 + 4.2 + windIntensity * 2.4,
-        petalPos.z + 15 * zoom
+      // Camera glides ALWAYS forward, fixed distance behind the petal. It
+      // never zooms or steps back — the only "motion" beyond the glide is the
+      // gentle fov breathing below, which keeps the grass stable on screen.
+      const camTarget = new THREE.Vector3(
+        petalPos.x * 0.6,
+        petalPos.y * 0.55 + 4.2,
+        petalPos.z + 15
       );
-      camera.position.lerp(target, 1 - Math.pow(0.0015, dt));
-      camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30 - windIntensity * 10);
+      camera.position.lerp(camTarget, 1 - Math.pow(0.0015, dt));
+      camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30);
       // Weightless drift: a very slow horizon roll and gentle FOV breathing
       // so cruising never feels locked on rails. Periods are long (20-30s)
       // and amplitudes tiny — felt more than seen.
       camera.rotation.z += Math.sin(timeSec * 0.29) * 0.03 + Math.sin(timeSec * 0.83) * 0.008;
       boostLevel += (boostTarget - boostLevel) * Math.min(1, dt * 3);
       gustFx += (gustFxTarget - gustFx) * Math.min(1, dt * 3);
-      camera.fov = 60 + Math.sin(timeSec * 0.21) * 1.3 + boostLevel * 5 + gustFx * 7;
+      camera.fov = 60 + Math.sin(timeSec * 0.21) * 1.3 + boostLevel * 5;
       camera.updateProjectionMatrix();
       // Shadow map refreshes at ~20Hz (see shadowMap.autoUpdate above).
       if ((frameNo++ % 3) === 0) renderer.shadowMap.needsUpdate = true;
