@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FLOWER_VARIANTS } from './trail.js?v=5';
+import { FLOWER_VARIANTS } from './trail.js?v=6';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=10';
+import { createGrass } from './grass.js?v=11';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -13,7 +13,7 @@ export const SKY_BOTTOM = 0xc8e6ff;
 // dawn garden, mid-morning valley, afternoon summit ridge.
 export const MEADOW_THEMES = [
   {
-    name: 'Ranger Station Garden', line: 'Dawn. The ranger\'s garden wakes by the trailhead.',
+    name: 'Ranger Station', line: 'Dawn. The ranger station wakes by the trailhead.',
     skyTop: 0x7fa3d4, skyBottom: 0xffeadb, fogNear: 72, fogFar: 340,
     sunColor: 0xffe2ba, sunIntensity: 1.3,
     hemiSky: 0xf2e4d2, hemiGround: 0x7a9e5a, tint: [1.05, 1.0, 0.96],
@@ -517,9 +517,11 @@ function buildFlowerGeometry({ shape = 'daisy', petalRadius = 0.5, centerRadius 
       const g = curvedPetal(petalRadius * 0.9 * L.r, petalRadius * 0.55 * L.r * wideScale * spread, petalTint(i * 2 + li));
       g.rotateY(-L.tilt); // lift the tip toward the viewer
       g.rotateZ(a);       // fan around the crown
+      // Petals radiate FROM the pistil: the base tucks under the centre disc
+      // (a larger offset left the petals floating detached from it).
       g.translate(
-        Math.cos(a) * petalRadius * 1.05 * spread,
-        Math.sin(a) * petalRadius * 1.05 * spread,
+        Math.cos(a) * petalRadius * 0.62 * spread * Math.min(1, L.r),
+        Math.sin(a) * petalRadius * 0.62 * spread * Math.min(1, L.r),
         L.z ?? 0 // deeper layers sit slightly behind
       );
       parts.push(g);
@@ -1270,6 +1272,9 @@ export function initRender(canvas) {
     flowerStats() {
       return { petalCount: petalColors.length, budKinds: KIND_GEOMETRIES.length };
     },
+    budCounts() {
+      return budMeshes.map((m) => (m ? m.count : 0));
+    },
     setTrail(buds, motherPos) {
       scaleBuds(buds);
       if (motherPos) {
@@ -1584,7 +1589,7 @@ export function initRender(canvas) {
         mother.rotation.z += dt * 0.4;
         mother.position.set(
           mother.userData.wx,
-          HILLS.height(mother.userData.wx, mother.userData.wz) + 1.8,
+          HILLS.height(mother.userData.wx, mother.userData.wz) + 3.4,
           mother.userData.wz
         );
       }
@@ -1695,13 +1700,14 @@ export function initRender(canvas) {
     for (const m of budMeshes) {
       if (!m) continue;
       scene.remove(m);
-      m.geometry.dispose();
+      // Do NOT dispose m.geometry: KIND_GEOMETRIES are shared across stages.
+      // Disposing one breaks the next stage's flowers (missing meadow).
     }
     budMeshes = [];
     for (const m of stemMeshes) {
       if (!m) continue;
       scene.remove(m);
-      m.geometry.dispose();
+      // STEM_GEO is shared too — same rule.
     }
     stemMeshes = [];
     perKind.forEach((indices, k) => {

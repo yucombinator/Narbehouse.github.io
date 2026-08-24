@@ -10,11 +10,11 @@ export const CRUISE_SPEED = 6;      // world units / second, constant
 export const MAX_BANK_DEG = 35;     // max bank angle, two-button steering
 export const G_EFF = 9.8;           // feel constant for the curvature budget
 export const MAX_CURVATURE = 0.09;  // |x''(z)| cap; hard invariant
-export const CLUSTER_SPACING = 78;      // long empty meadow between bunches
-export const CLUSTER_SPACING_JITTER = 34; // random gap variation
+export const CLUSTER_SPACING = 50;      // shorter gaps — the meadow stays floral
+export const CLUSTER_SPACING_JITTER = 20; // random gap variation
 export const CLUSTER_RADIUS = 4.6;      // wider scatter — clusters aren't a line
-export const CLUSTER_MIN = 3;           // flowers per bunch: a proper little patch
-export const CLUSTER_MAX = 5;
+export const CLUSTER_MIN = 4;           // flowers per bunch: a proper little patch
+export const CLUSTER_MAX = 6;
 export const ALT_AMPLITUDE = 3.0;       // max |y(z) - HILL_OFFSET| flight path
 export const BUD_SPREAD = CLUSTER_RADIUS + 2.2; // corridor spread used by tests
 export const FLY_ALT = 3.6;             // how high above the ground the petal cruises
@@ -71,13 +71,15 @@ export function generateTrail({ seed, length = 400, species = null }) {
 	const rand = mulberry32(seed);
 	const zStart = 40;                      // trail begins at the player
 	const zEnd = zStart - length;           // and runs toward -z (forward)
-  // The path rolls gently like wind over a meadow: long-wavelength lateral
-  // sway (amplitudes a few units, periods ~200-600 units) — still far under
-  // the holdable curvature budget.
-  const layers = 2;
-  const freqs = Array.from({ length: layers }, () => 0.004 + rand() * 0.01);
+  // The path rolls like wind over a meadow: long-wavelength lateral sway,
+// plus one big sweeping meander layer so the hike actually turns left and
+// right to follow the flowers — never a straight corridor.
+  const layers = 3;
+  const freqs = Array.from({ length: layers }, (_, i) =>
+    i === 2 ? 0.0012 + rand() * 0.0015 : 0.004 + rand() * 0.01);
   const phases = Array.from({ length: layers }, () => rand() * Math.PI * 2);
-  const amps = freqs.map((f, i) => (i === 0 ? 4 + rand() * 4 : 2.5 + rand() * 2.5));
+  const amps = freqs.map((f, i) =>
+    i === 2 ? 10 + rand() * 10 : (i === 0 ? 4 + rand() * 4 : 2.5 + rand() * 2.5));
 
   // The flight path hovers ~FLY_ALT above the terrain: the petal follows the
   // hills' undulations (ground level) plus a float altitude, so it dips into

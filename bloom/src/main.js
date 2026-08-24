@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=22';
-import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=5';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=23';
+import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=6';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
 import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, speciesScale } from './flowers.js?v=5';
@@ -277,7 +277,7 @@ window.__petalGame = {
     render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
-    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel, gust: gust.active, paused, resting };
+    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel, gust: gust.active, paused, resting };
   },
   bud(i) {
     return trail.buds[i]
@@ -306,6 +306,7 @@ window.__petalGame = {
       cards: sessionCards.length,
       interludeOpen: ceremonyOpen(),
       spillBuds: trail.buds.filter((b) => b.cluster < 0).length,
+      budCounts: render?.budCounts?.() ?? [],
       galleryCount: (() => {
         try {
           return loadBouquets(storage).length;
@@ -1344,7 +1345,7 @@ function loop() {
     render?.setBoost?.(boostLevel);
     render?.setGust?.(boostHeld ? 1 : 0);
     const gustFactor = gust.active ? 1.06 : 1;
-    const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor * gustFactor * (1 + 0.38 * boostLevel) }, input.left, input.right);
+    const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor * gustFactor * (1 + 0.5 * boostLevel) }, input.left, input.right);
     petal = { x: m.x + wind.swayVx * dt, z: m.z, y: petal.y + wind.bobY * dt, bank: m.bank };
     // The gust adds its lift to the altitude target, so the existing ease
     // turns it into one long breath of height instead of a jolt.

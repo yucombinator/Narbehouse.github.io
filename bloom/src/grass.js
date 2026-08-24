@@ -301,12 +301,15 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
         float wy = getHillHeight(wx, wz);
 
         // Smooth edge fade towards the domain boundary (domain-relative so
-        // Tier 2 at 180m and Tier 3 at 260m each dissolve at their own edge).
+        // each tier dissolves at its own edge). Tier 1 also fades across its
+        // last few metres so the dense near-field blends into Tier 2 instead
+        // of stopping in a hard density ring at the sides.
         float distFromCenter = length(vec2(wx - center.x, wz - center.y));
         float edgeFade = 1.0;
-        if (L > 80.0) {
-          float halfL = L * 0.5; // Tier 2: 90, Tier 3: 130
-          edgeFade = clamp((halfL - distFromCenter) / (halfL * 0.28), 0.0, 1.0);
+        {
+          float halfL = L * 0.5;
+          float fadeW = L <= 80.0 ? 9.0 : halfL * 0.28;
+          edgeFade = clamp((halfL - distFromCenter) / fadeW, 0.0, 1.0);
         }
         vEdgeFade = edgeFade;
 
@@ -396,12 +399,9 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
         vec2 toPetal = vec2(wx - uPetalPos.x, wz - uPetalPos.z);
         float distToPetal = length(toPetal);
 
-      // Soft petal-colour halo on the grass beneath. Computed per-vertex here
-      // (distToPetal is already needed for the wake below) and interpolated —
-      // the falloff is smooth over a blade's ~1 m span, so this is visually
-      // identical to the old per-fragment version but costs one exp per vertex
-      // instead of per pixel.
-      vHalo = exp(-distToPetal * distToPetal * 0.045) * 0.32;
+      // Soft petal-colour halo on the grass beneath. Kept subtle and tight —
+      // a wide bright halo read as a "carpet" along the flight path.
+      vHalo = exp(-distToPetal * distToPetal * 0.07) * 0.16;
 
         if (L <= 80.0 && distToPetal < 40.0) {
           // Instant bow-wave parting as the petal glides over grass
@@ -438,10 +438,10 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
               float segTime = mix(pA.w, pB.w, segT);
               float age = uTime - segTime;
 
-              if (age >= 0.0 && age <= 4.5) {
+              if (age >= 0.0 && age <= 3.4) {
                 float spatial = smoothstep(radius, 0.0, dist);
                 float attack = smoothstep(0.0, 0.35, age);
-                float decay = 1.0 - smoothstep(1.5, 4.5, age);
+                float decay = 1.0 - smoothstep(1.2, 3.4, age);
                 float trample = spatial * attack * decay;
 
                 if (trample > maxTrample) {
@@ -570,9 +570,9 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
         vec3 skyLight = vec3(0.75, 0.88, 1.0) * (0.45 + 0.30 * vNormal.y);
         vec3 sunLight = vec3(1.0, 0.94, 0.76) * (nDotL * 0.75 + sss);
 
-        // Grazed wake shimmer: subtle luminous golden reflection tracing the flight path
+        // Grazed wake shimmer: subtle luminous reflection tracing the flight path
         float trampleShimmer = vWake * (0.25 + 0.75 * h);
-        sunLight += vec3(1.0, 0.96, 0.75) * (trampleShimmer * 0.35);
+        sunLight += vec3(1.0, 0.96, 0.75) * (trampleShimmer * 0.22);
 
         vec3 finalColor = baseColor * (skyLight + sunLight);
 
