@@ -90,8 +90,8 @@ export function buildGrassClumpGeometry() {
 export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   const hp = hillsParams;
   const TIER1_COUNT = 18000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
-  const TIER2_COUNT = 20000; // Mid domain (180m x 180m) - lush rolling meadows (~1.0m spacing)
-  const TIER3_COUNT = 4500;  // Far ring (260m box, outer 70-130m) - sparse, fogged, hides the domain edge
+  const TIER2_COUNT = 17000; // Mid domain (180m x 180m) - lush rolling meadows (~1.0m spacing)
+  const TIER3_COUNT = 1800;  // Far ring (260m box, outer 70-130m) - sparse, fogged, hides the domain edge
 // Tier 4 (Sky Reach): a very sparse outer band (130-300m) in a fixed 600m
 // domain, DRAWN ONLY when the petal is high (instanceCount grows with
 // altitude). Fixed domain => the wrap never re-tiles, so the field stays
@@ -244,7 +244,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
   hillAttr.setUsage(THREE.DynamicDrawUsage);
   grassGeo.setAttribute('aHillY', hillAttr);
 
-  const TRAIL_MAX = 32;
+  const TRAIL_MAX = 16;
   const trailArray = [];
   for (let i = 0; i < TRAIL_MAX; i++) {
     trailArray.push(new THREE.Vector4(0, -999, 0, -100));
@@ -275,7 +275,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
     vertexShader: `
       precision highp float;
 
-      #define TRAIL_MAX 32
+      #define TRAIL_MAX 16
 
       uniform float uTime;
       uniform vec3 uCameraPos;
@@ -436,9 +436,10 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
 
       // Soft petal-colour halo on the grass beneath. Kept subtle and tight —
       // a wide bright halo read as a "carpet" along the flight path.
-      vHalo = exp(-distToPetal * distToPetal * 0.07) * 0.16;
+      float hd = max(0.0, 1.0 - distToPetal * 0.22);
+      vHalo = 0.16 * hd * hd;
 
-        if (L <= 80.0 && distToPetal < 40.0) {
+        if (L <= 80.0 && distToPetal < 30.0) {
           // Instant bow-wave parting as the petal glides over grass
           float grassTop = wy + H;
           float vertDist = max(0.0, uPetalPos.y - grassTop);
@@ -638,7 +639,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
   function update(timeSec, petalPos, bank, wind, cameraPos, petalColor) {
     // Update flight path history for persistent grass trample trail
     const distMoved = lastTrailPos.distanceTo(petalPos);
-    if (timeSec - lastTrailTime > 0.08 || distMoved > 0.4) {
+    if (timeSec - lastTrailTime > 0.08 || distMoved > 1.0) {
       for (let i = TRAIL_MAX - 1; i > 0; i--) {
         trailArray[i].copy(trailArray[i - 1]);
       }

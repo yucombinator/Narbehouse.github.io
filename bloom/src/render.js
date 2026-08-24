@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_VARIANTS } from './trail.js?v=8';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=17';
+import { createGrass } from './grass.js?v=19';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -1080,7 +1080,9 @@ export function initRender(canvas) {
   // preserveDrawingBuffer stays off: keeping it forced a full framebuffer
   // copy-back every frame — one of the heaviest avoidable costs.
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  // Cap internal resolution modestly: at 2x device pixel ratio this saves
+  // ~30% of fragment work (the biggest single FPS lever in the game).
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
   // Shadows follow a smoothly-moving sun; refreshing the map at ~20Hz is
   // imperceptible and saves a full caster pass on the other frames.
   renderer.shadowMap.autoUpdate = false;
@@ -2175,7 +2177,9 @@ while (breathAcc >= 1) {
       camera.fov = 60 + Math.sin(timeSec * 0.21) * 1.3 + boostLevel * 5;
       camera.updateProjectionMatrix();
       // Shadow map refreshes at ~20Hz (see shadowMap.autoUpdate above).
-      if ((frameNo++ % 3) === 0) renderer.shadowMap.needsUpdate = true;
+      // Shadow map refreshes at ~15Hz (see shadowMap.autoUpdate above) — the
+      // sun moves slowly and shadows land subtly; 20Hz was measurable.
+      if ((frameNo++ % 4) === 0) renderer.shadowMap.needsUpdate = true;
 
       // Proximity: petals near the camera fade toward translucent, graduating
       // smoothly across the band. The default POV puts ring petals ~15 units

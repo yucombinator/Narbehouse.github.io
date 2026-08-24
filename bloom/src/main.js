@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=28';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=30';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=8';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
@@ -310,7 +310,7 @@ window.__petalGame = {
     render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
-    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel, gust: gust.active, paused, resting };
+    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel, gust: gust.active, paused, resting, fps: frameFps };
   },
   bud(i) {
     return trail.buds[i]
@@ -1386,7 +1386,16 @@ function gustUpdate(dt) {
   return Math.sin(Math.PI * k) ** 2 * gust.peak; // smooth rise, gentle settle
 }
 
+let frameFps = 0;        // rolling average of rendered frames/sec (diagnostics)
+let frameAcc = 0, frameN = 0, frameLast = performance.now();
+
 function loop() {
+  // Lightweight fps meter: average of the last ~30 rAF deltas.
+  const now = performance.now();
+  frameAcc += now - frameLast;
+  frameLast = now;
+  frameN++;
+  if (frameN >= 30) { frameFps = 1000 / (frameAcc / frameN); frameN = 0; frameAcc = 0; }
   const dt = Math.min(clock.getDelta(), 1 / 20);
   // Debug HUD: smooth FPS from real frame intervals (dt is clamped to 1/20).
   if (debugOn) {
