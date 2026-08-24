@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=20';
-import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS } from './trail.js?v=4';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=21';
+import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=5';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
-import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS } from './flowers.js?v=4';
+import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, speciesScale } from './flowers.js?v=5';
 import { TOTAL_STOPS, TOTAL_STAGES, createRun, reachStop, commitPick, beginCeremony, finishCeremony } from './run.js';
 import { loadBouquets, addBouquet, resetBouquets } from './gallery.js';
 import { composePostcard } from './poem.js?v=3';
 import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg, flowerCardSvg } from './art.js?v=2';
 import { mulberry32 } from './rand.js';
 import { noteFor } from './notes.js';
-import { initAudio } from './audio.js';
+import { initAudio } from './audio.js?v=1';
 import { loadSave, writeSave, resetSave } from './state.js';
 import { windAt } from './wind.js';
 import { HILLS } from './hill.js';
@@ -57,48 +57,68 @@ function bindHold(el, key) {
   el.addEventListener('pointerleave', set(false));
 }
 
-// Steering is invisible by design — the whole screen is the button (left /
-// right halves, or the arrow keys). No on-screen LEFT/RIGHT labels: they
-// suggested the game wanted deliberate steering, and it doesn't.
+// Controls are deliberately minimal: Space and Enter are the only keys the
+// game ever asks for. The whole screen is also the button (tap the left or
+// right half to steer) for touch users. No Arrow/WASD keys, ever.
 
-function keyIsLeft(e) {
-  return e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A';
+function userGust() {
+  // Summon an updraft right now: a warmer, quicker arc than the ambient ones,
+  // with audible + visual feedback so the command is clearly acknowledged.
+  gust.active = true;
+  gust.t = 0;
+  gust.dur = 2.8;
+  gust.peak = 6;
+  gust.user = true;
+  gust.next = 8 + Math.random() * 8; // give the ambient cycle fresh air
+  audio?.whoosh?.();
+  render?.setGust?.(1);
 }
-function keyIsRight(e) {
-  return e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D' || e.key === 'Enter';
-}
+
+// Enter does double duty in flight: a quick tap calls a gust, holding it for
+// a beat opens Pause. (Escape also opens Pause; the on-screen ⏸ button too.)
+let gustHoldTimer = null;
+let enterArmed = false;
+
+// Capture phase: runs BEFORE the dialog handlers on document, so an Enter
+// that a dialog consumes (start / stop / ceremony / pause) is never misread
+// as a flight gust or pause-reopen afterwards.
 window.addEventListener('keydown', (e) => {
 	// While the title screen is up, Space/Enter belong to Start.
 	if (isTitleOpen || paused) return;
 	// While a meadow stop or ceremony is open, keys belong to those dialogs.
 	if (isStopOpen || ceremonyOpen()) return;
-	// Holding Return during play opens Pause; steering still sees the press.
-	if (keyIsRight(e) && started && holdTimer === null && !e.repeat) {
-		holdTimer = setTimeout(openPause, HOLD_RETURN_MS);
-	}
-	if (keyIsLeft(e)) {
-		input.left = true;
-		e.preventDefault();
-	}
-	if (keyIsRight(e)) {
-		input.right = true;
-		e.preventDefault();
-	}
 	// Holding Space rides a gentle burst of wind — flight only, never needed.
 	if (e.key === ' ' && started && run.phase === 'FLYING') {
 		if (!e.repeat) boostHeld = true;
 		e.preventDefault();
 	}
-});
+	// Enter: arm a gust; a long press becomes Pause instead.
+	if (e.key === 'Enter' && started && (run.phase === 'FLYING' || run.phase === 'DRIFTING')) {
+		if (!e.repeat) {
+			enterArmed = true;
+			clearTimeout(gustHoldTimer);
+			gustHoldTimer = setTimeout(() => {
+				if (!paused && !isStopOpen && !ceremonyOpen()) openPause();
+			}, 700);
+		}
+		e.preventDefault();
+	}
+}, true);
 window.addEventListener('keyup', (e) => {
   if (e.key === ' ') boostHeld = false;
-  if (keyIsRight(e)) {
-    clearTimeout(holdTimer);
-    holdTimer = null;
-    enterHeld = false;
+  if (e.key === 'Enter') {
+    clearTimeout(gustHoldTimer);
+    gustHoldTimer = null;
+    // Only a tap that was armed in flight summons a gust — a ceremony Enter
+    // (reveal / choose / fly-on) is never misread as one.
+    if (enterArmed) {
+      enterArmed = false;
+      if (!paused && !isStopOpen && !ceremonyOpen() &&
+          (run.phase === 'FLYING' || run.phase === 'DRIFTING')) {
+        userGust();
+      }
+    }
   }
-  if (keyIsLeft(e)) input.left = false;
-  if (keyIsRight(e)) input.right = false;
 });
 
 // Canvas halves steer too.
@@ -279,7 +299,7 @@ window.__petalGame = {
     render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
-    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel };
+    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, gust: gust.active, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel, gust: gust.active, gustUser: gust.user, paused };
   },
   bud(i) {
     return trail.buds[i]
@@ -825,15 +845,12 @@ function activateScanItemAt(act) {
 }
 
 // --- Pause menu (hold Return anywhere in gameplay) ------------------------
-const HOLD_RETURN_MS = 750;
 const pauseEl = document.getElementById('pause');
 const pauseItemsEl = document.getElementById('pauseItems');
 let paused = false;
 let pausePage = 'main'; // 'main' | 'settings'
 let pauseFocus = 0;
 let pauseTimer = null;
-let holdTimer = null;
-let enterHeld = false;
 
 function pauseMenuItems() {
   if (pausePage === 'settings') {
@@ -882,10 +899,8 @@ function armPauseScan() {
 }
 
 function openPause() {
-  holdTimer = null;
   if (paused || !started || isTitleOpen || isStopOpen || ceremonyOpen()) return;
   paused = true;
-  enterHeld = true; // ignore Enter auto-repeats until the held key is released
   input.left = false;
   input.right = false;
   hushSpeech();
@@ -1049,23 +1064,10 @@ function mixHex(a, b, t) {
   return rgbToHex(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t);
 }
 
-// Similar flowers grow together: lean each meadow stretch's bud colours
-// toward one local variant's colour family. Spill buds (cluster < 0) already
-// carry their stop's exact palette, so they're skipped.
-function tintMeadowSegments() {
-  for (let i = 0; i < trail.buds.length; i++) {
-    const b = trail.buds[i];
-    let seg = 0;
-    while (seg < TOTAL_STOPS && b.z < stopZs[seg]) seg++;
-    if (b.cluster < 0) continue;
-    const mood = segmentMood(meadowSeed, Math.min(seg, TOTAL_STOPS - 1));
-    if (mood && b.colorHex) b.colorHex = mixHex(b.colorHex, mood.petalHex, 0.55);
-  }
-}
-
 // Colour-spill: on the approach to each stop threshold, a light scattering of
-// buds blooms in the exact colours that stop will offer — a promise, not a
-// wall of flowers. The beacons (light shafts) are the primary cue.
+// buds blooms in the exact flowers that stop will offer — a promise, not a
+// wall. Each spill bud is one of the offered species: same shape, size and
+// colour as its chooser card, just a little smaller for the distance.
 function addStopSpill(t) {
   const mix32 = (x) => {
     x |= 0;
@@ -1081,17 +1083,54 @@ function addStopSpill(t) {
       const z = stopZs[i] + 4 + rng() * 14;
       const x = t.pointAt(z).x + (rng() - 0.5) * 6.5;
       const f = offers[Math.floor(rng() * offers.length)];
-      const colHex = mixHex(f.petalHex, '#ffffff', 0.18); // pastel lift
       extra.push({
         x,
         y: HILLS.height(x, z) + 2.4,
         z: z + (rng() - 0.5) * 2.5,
-        colorHex: parseInt(colHex.slice(1), 16),
-        kind: Math.floor(rng() * FLOWER_VARIANTS.length),
+        colorHex: parseInt(f.petalHex.slice(1), 16),
+        speciesId: f.id,
+        scale: speciesScale(f.id) * 0.85,
+        kind: variantForShape(f.shape),
         kindIndex: 0,
         cluster: -(i + 1), // sentinel: spill bud for stop i
       });
     }
+  }
+  t.buds.push(...extra);
+  t.buds.sort((a, b) => b.z - a.z);
+  const counts = Array.from({ length: FLOWER_VARIANTS.length }, () => 0);
+  for (const b of t.buds) b.kindIndex = counts[b.kind]++;
+}
+
+// The stop itself must be somewhere to land: a small clump of the three
+// offered flowers grows exactly at the trigger point, so when you pass over
+// the threshold there really is a little patch of those flowers in the grass.
+// Slightly larger than the drift of the meadow so it reads as the chooser.
+function addStopFlowers(t) {
+  const extra = [];
+  for (let i = 0; i < TOTAL_STOPS; i++) {
+    const offers = sampleChoices(meadowSeed, i, stagePool()).map((id) => flowerById(id));
+    const cx = t.pointAt(stopZs[i]).x;
+    const cz = stopZs[i] + 2.5; // right where the trigger waits
+    offers.forEach((f, oi) => {
+      for (let k = 0; k < 3; k++) {
+        const a = oi * ((Math.PI * 2) / 3) + k * 0.75;
+        const r = 1.5 + (k % 2) * 1.15;
+        const x = cx + Math.cos(a) * r;
+        const z = cz + Math.sin(a) * r * 0.55;
+        extra.push({
+          x,
+          y: HILLS.height(x, z) + 2.6,
+          z,
+          colorHex: parseInt(f.petalHex.slice(1), 16),
+          speciesId: f.id,
+          scale: speciesScale(f.id) * 1.15,
+          kind: variantForShape(f.shape),
+          kindIndex: 0,
+          cluster: -(i + 1),
+        });
+      }
+    });
   }
   t.buds.push(...extra);
   t.buds.sort((a, b) => b.z - a.z);
@@ -1118,6 +1157,7 @@ function beginRun(seed) {
   trail = generateTrail({ seed: meadowSeed, species: stagePool() });
   stopZs = computeStopZs(trail);
   addStopSpill(trail);
+  addStopFlowers(trail);
   refreshStopMarkers();
   petal = { x: trail.pointAt(trail.zStart).x, z: trail.zStart, bank: 0, y: trail.pointAt(trail.zStart).y };
   meadowBuds = 0;
@@ -1132,7 +1172,6 @@ function beginRun(seed) {
   render?.resetTrail(); // new meadow = new ribbon
   saveProgress();
   updateHud();
-  tintMeadowSegments();
   // The hike's light shifts with each meadow, and its name is announced —
   // dawn garden, morning valley, afternoon summit.
   render?.applyTheme?.(stageIndex);
@@ -1213,7 +1252,7 @@ function elasticCenter(dt) {
 // --- Gust riding -----------------------------------------------------------
 // Every so often a warm updraft slides under the petal and carries it in a
 // slow arc — no input asked, nothing to do but ride it. Pure ambience.
-const gust = { next: 7 + Math.random() * 8, active: false, t: 0, dur: 0, peak: 0 };
+const gust = { next: 7 + Math.random() * 8, active: false, t: 0, dur: 0, peak: 0, user: false };
 
 function gustUpdate(dt) {
   if (!gust.active) {
@@ -1229,6 +1268,7 @@ function gustUpdate(dt) {
   gust.t += dt;
   if (gust.t >= gust.dur) {
     gust.active = false;
+    gust.user = false;
     gust.next = 9 + Math.random() * 9;
     return 0;
   }
@@ -1248,7 +1288,11 @@ function loop() {
     // Space burst: eased so engaging/release reads as wind strength, not a gear.
     boostLevel += ((boostHeld ? 1 : 0) - boostLevel) * Math.min(1, dt * 3);
     render?.setBoost?.(boostLevel);
-    const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor * (gust.active ? 1.06 : 1) * (1 + 0.38 * boostLevel) }, input.left, input.right);
+    // A summoned gust is a stronger push than an ambient ride — and the fx
+    // level tells the renderer to surge its trailing bubbles.
+    render?.setGust?.(gust.active ? 1 : 0);
+    const gustFactor = gust.active ? (gust.user ? 1.15 : 1.06) : 1;
+    const m = advance(petal, dt, { speed: CRUISE_SPEED * wind.speedFactor * gustFactor * (1 + 0.38 * boostLevel) }, input.left, input.right);
     petal = { x: m.x + wind.swayVx * dt, z: m.z, y: petal.y + wind.bobY * dt, bank: m.bank };
     // The gust adds its lift to the altitude target, so the existing ease
     // turns it into one long breath of height instead of a jolt.
@@ -1369,6 +1413,7 @@ let started = false;
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (paused) closePause();
+    else if (started && !isStopOpen && !ceremonyOpen()) openPause();
     else closeConfirm();
   }
   // Pause menu: Space steps, Enter chooses.
@@ -1377,7 +1422,7 @@ document.addEventListener('keydown', (e) => {
       focusPauseItem(pauseFocus + 1);
       e.preventDefault();
     } else if (e.key === 'Enter') {
-      if (!enterHeld) activatePauseItem(); // swallow repeats from the held key
+      if (!e.repeat) activatePauseItem(); // ignore auto-repeats
       e.preventDefault();
     }
     return;

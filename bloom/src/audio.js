@@ -218,6 +218,35 @@ function getApi() {
       osc.start(t);
       osc.stop(t + 0.65);
     },
+    // A summoned gust of wind: a soft filtered-noise sweep rising then
+    // settling — unmistakable but never loud enough to startle.
+    whoosh() {
+      if (!ctx || muted) return;
+      if (ctx.state === 'suspended') ctx.resume();
+      const t = ctx.currentTime;
+      const dur = 0.9;
+      const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) {
+        const k = i / d.length;
+        d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * k) * (1 - k * 0.45);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = 0.9;
+      bp.frequency.setValueAtTime(240, t);
+      bp.frequency.exponentialRampToValueAtTime(1100, t + dur * 0.55);
+      bp.frequency.exponentialRampToValueAtTime(420, t + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.12, t + 0.12);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(bp).connect(g).connect(master);
+      src.start(t);
+      src.stop(t + dur + 0.05);
+    },
     bloomChord() {
       if (!ctx || muted) return;
       if (ctx.state === 'suspended') ctx.resume();

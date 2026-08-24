@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FLOWER_VARIANTS } from './trail.js?v=4';
+import { FLOWER_VARIANTS } from './trail.js?v=5';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
 import { createGrass } from './grass.js?v=10';
@@ -17,18 +17,24 @@ export const MEADOW_THEMES = [
     skyTop: 0x7fa3d4, skyBottom: 0xffeadb, fogNear: 72, fogFar: 340,
     sunColor: 0xffe2ba, sunIntensity: 1.3,
     hemiSky: 0xf2e4d2, hemiGround: 0x7a9e5a, tint: [1.05, 1.0, 0.96],
+    // Dawn: low, small, distant clouds hugging the horizon, warmed by the
+    // sunrise — no tall cumulus overhead before the day has properly begun.
+    cloud: { count: 5, yBand: [12, 30], zoBand: [-270, -150], scale: [1.2, 1.8], tint: 0xffe6cc, opacity: 0.9, flat: 0.8 },
   },
   {
     name: 'Valley Meadow', line: 'Mid-morning. The valley opens.',
     skyTop: SKY_TOP, skyBottom: SKY_BOTTOM, fogNear: 75, fogFar: 380,
     sunColor: 0xfff2d8, sunIntensity: 1.4,
     hemiSky: 0xcfe8ff, hemiGround: 0x7a9e4a, tint: [1, 1, 1],
+    cloud: { count: 7, yBand: [28, 58], zoBand: [-240, -110], scale: [1.6, 2.4], tint: 0xffffff, opacity: 0.95, flat: 1.0 },
   },
   {
     name: 'Summit Ridge', line: 'Afternoon. The summit ridge.',
     skyTop: 0x3a7fd0, skyBottom: 0xdff0ff, fogNear: 95, fogFar: 430,
     sunColor: 0xfff7e0, sunIntensity: 1.5,
     hemiSky: 0xe4f2ff, hemiGround: 0x6a8e5e, tint: [0.93, 1.0, 1.03],
+    // Summit: the day is mature — fuller, higher, closer clouds.
+    cloud: { count: 9, yBand: [48, 90], zoBand: [-190, -80], scale: [2.0, 3.0], tint: 0xfff0e0, opacity: 0.97, flat: 1.0 },
   },
 ];
 
@@ -618,7 +624,7 @@ const PETAL_RING_R = 0.3;
 
 // Per-kind size tuning — MUST cover every FLOWER_VARIANTS entry (a missing
 // entry yields undefined -> NaN scales -> invisible instances).
-const KIND_SCALE = [1.0, 1.05, 0.95, 1.12, 0.95, 1.05, 1.02, 1.08, 0.9, 0.88];
+const KIND_SCALE = [1.0, 1.05, 0.95, 1.12, 0.95, 1.05, 1.02, 1.08, 0.9, 0.88, 0.95];
 
 // Linear interpolation helper (the frame eases petals toward their slot).
 function lerp(a, b, t) {
@@ -931,6 +937,8 @@ export function initRender(canvas) {
   let windIntensity = 0; // 0 = calm, 1 = full wind rush (ramps with steering)
   let boostLevel = 0;    // eased Space-burst level (0..1) — fov lift only
   let boostTarget = 0;
+  let gustFx = 0;        // eased Enter-gust level (0..1) — breath surge + fov
+  let gustFxTarget = 0;
   let frameNo = 0;
   const trailHistory = []; // {x,y,z} recent flight positions for the petal trail
 
@@ -1050,6 +1058,7 @@ export function initRender(canvas) {
 
   // --- Meadow theming: the hike's light --------------------------------
   let themeIndex = 0;
+  let clouds = []; // built later; applyTheme re-skins them per stage
   function applyTheme(i) {
     const theme = MEADOW_THEMES[((i % MEADOW_THEMES.length) + MEADOW_THEMES.length) % MEADOW_THEMES.length];
     themeIndex = MEADOW_THEMES.indexOf(theme);
@@ -1076,6 +1085,25 @@ export function initRender(canvas) {
     sun.intensity = theme.sunIntensity;
     ambient.color.set(theme.hemiSky);
     ambient.groundColor.set(theme.hemiGround);
+    // Clouds grow through the day: at dawn a few low, warm, distant puffs
+    // hug the horizon; by the summit they're fuller, higher and nearer.
+    const cc = theme.cloud;
+    if (cc && clouds.length) {
+      puffMat.color.set(cc.tint);
+      puffMat.opacity = cc.opacity;
+      clouds.forEach((c, i) => {
+        if (i >= cc.count) { c.visible = false; return; }
+        c.visible = true;
+        const s = cc.scale[0] + Math.random() * (cc.scale[1] - cc.scale[0]);
+        c.scale.set(s, s * (cc.flat ?? 1), s);
+        c.userData.zo = cc.zoBand[0] + Math.random() * (cc.zoBand[1] - cc.zoBand[0]);
+        c.position.set(
+          (Math.random() - 0.5) * 340,
+          cc.yBand[0] + Math.random() * (cc.yBand[1] - cc.yBand[0]),
+          camera.position.z + c.userData.zo
+        );
+      });
+    }
   }
   applyTheme(0); // the day begins in the garden at dawn
 
@@ -1143,9 +1171,8 @@ export function initRender(canvas) {
 
   // Clouds: fluffy cumulus built from vertex-shaded puffs. Colors are baked
   // into the geometry (white tops, soft blue-grey bellies) with an unlit
-  // material, so scene lights can never tint them green or pink. They sit
-  // high and AHEAD of the flight path — you see part of a cloud, naturally.
-  const clouds = [];
+  // material, so scene lights can never tint them green or pink. applyTheme
+  // re-skins them per stage (position, size, tint) — see theme.cloud.
   const puffGeo = new THREE.SphereGeometry(1, 14, 11);
   {
     const pos = puffGeo.attributes.position;
@@ -1239,6 +1266,7 @@ export function initRender(canvas) {
     applyTheme,
     currentThemeIndex() { return themeIndex; },
     setBoost(v) { boostTarget = Math.max(0, Math.min(1, v || 0)); },
+    setGust(v) { gustFxTarget = Math.max(0, Math.min(1, v || 0)); },
     flowerStats() {
       return { petalCount: petalColors.length, budKinds: KIND_GEOMETRIES.length };
     },
@@ -1495,7 +1523,7 @@ export function initRender(canvas) {
                 stemMesh.setMatrixAt(local, stemDummy.matrix);
               }
             } else {
-              const sc = (1 - kt) * KIND_SCALE[kind];
+              const sc = (1 - kt) * KIND_SCALE[kind] * (b.scale ?? 1);
               dummy.position.set(b.x, crownY, b.z);
               dummy.scale.setScalar(sc);
               if (stemMesh) {
@@ -1520,7 +1548,7 @@ export function initRender(canvas) {
             // (they were dots at the old 42% floor).
             const sc = (0.78 + 0.22 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
             dummy.position.set(b.x, crownY - (1 - open) * 0.18, b.z);
-            dummy.scale.setScalar(sc * KIND_SCALE[kind]);
+            dummy.scale.setScalar(sc * KIND_SCALE[kind] * (b.scale ?? 1));
             if (stemMesh) {
               stemDummy.position.set(b.x, ground, b.z);
               stemDummy.rotation.set(0, 0, Math.sin(timeSec * 1.6 + i) * 0.04 * open); // gentle sway
@@ -1532,8 +1560,8 @@ export function initRender(canvas) {
           dummy.updateMatrix();
           mesh.setMatrixAt(local, dummy.matrix);
         }
-        for (const m of budMeshes) m.instanceMatrix.needsUpdate = true;
-        for (const m of stemMeshes) m.instanceMatrix.needsUpdate = true;
+        for (const m of budMeshes) { if (m) m.instanceMatrix.needsUpdate = true; }
+        for (const m of stemMeshes) { if (m) m.instanceMatrix.needsUpdate = true; }
       }
 
       // Pops: a whisper of a ring — just enough to confirm the pickup.
@@ -1573,7 +1601,7 @@ export function initRender(canvas) {
       // breath deepens as the basket fills — a fuller day breathes harder.
       // Each puff rises lazily, leans with the wind, and fades in/out on a
       // sine envelope that peaks around a gentle 0.13 alpha.
-      breathAcc += dt * (5 + petalMeshes.length * 0.8);
+      breathAcc += dt * (5 + petalMeshes.length * 0.8) * (1 + gustFx * 6);
       while (breathAcc >= 1) {
         breathAcc -= 1;
         const p = breath[breathCursor];
@@ -1588,7 +1616,7 @@ export function initRender(canvas) {
         p.vx = windBias * 0.45 + (Math.random() - 0.5) * 0.14;
         p.vy = 0.16 + Math.random() * 0.12;
         p.vz = (Math.random() - 0.5) * 0.1;
-        p.s0 = 0.32 + Math.random() * 0.22;
+        p.s0 = (0.32 + Math.random() * 0.22) * (1 + gustFx * 0.6);
       }
       for (let i = 0; i < BREATH_N; i++) {
         const p = breath[i];
@@ -1599,7 +1627,7 @@ export function initRender(canvas) {
         p.y += p.vy * dt;
         p.z += p.vz * dt;
         const k = p.life / p.max;
-        bAlpha[i] = Math.sin(k * Math.PI) * 0.13;
+        bAlpha[i] = Math.sin(k * Math.PI) * (0.13 + gustFx * 0.12);
         bSize[i] = p.s0 * (1 + k * 1.6); // swells as it dissolves
         bPos[i * 3] = p.x;
         bPos[i * 3 + 1] = p.y;
@@ -1612,7 +1640,7 @@ export function initRender(canvas) {
       // Camera trails behind (larger z) and above the petal, looking ahead.
       // While steering (windIntensity up), pull the camera back so the POV
       // zooms out and the whole wind effect is in frame.
-      const zoom = 1 + windIntensity * 1.6;
+      const zoom = 1 + windIntensity * 1.6 + gustFx * 0.8;
       const target = new THREE.Vector3(
         petalPos.x * 0.6 * zoom - camera.rotation.y * windIntensity,
         petalPos.y * 0.55 + 4.2 + windIntensity * 2.4,
@@ -1625,7 +1653,8 @@ export function initRender(canvas) {
       // and amplitudes tiny — felt more than seen.
       camera.rotation.z += Math.sin(timeSec * 0.29) * 0.03 + Math.sin(timeSec * 0.83) * 0.008;
       boostLevel += (boostTarget - boostLevel) * Math.min(1, dt * 3);
-      camera.fov = 60 + Math.sin(timeSec * 0.21) * 1.3 + boostLevel * 5;
+      gustFx += (gustFxTarget - gustFx) * Math.min(1, dt * 3);
+      camera.fov = 60 + Math.sin(timeSec * 0.21) * 1.3 + boostLevel * 5 + gustFx * 7;
       camera.updateProjectionMatrix();
       // Shadow map refreshes at ~20Hz (see shadowMap.autoUpdate above).
       if ((frameNo++ % 3) === 0) renderer.shadowMap.needsUpdate = true;
@@ -1665,11 +1694,13 @@ export function initRender(canvas) {
       perKind[k].push(i);
     });
     for (const m of budMeshes) {
+      if (!m) continue;
       scene.remove(m);
       m.geometry.dispose();
     }
     budMeshes = [];
     for (const m of stemMeshes) {
+      if (!m) continue;
       scene.remove(m);
       m.geometry.dispose();
     }

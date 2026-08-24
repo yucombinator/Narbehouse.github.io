@@ -9,14 +9,15 @@ import {
   segmentMood,
   bouquetTitle,
   MEADOW_POOLS,
+  speciesScale,
 } from '../src/flowers.js';
 import { moodKeyForHex } from '../src/poem.js';
 import { TOTAL_STOPS, TOTAL_STAGES } from '../src/run.js';
 
-const SHAPES = new Set(['daisy', 'cup', 'bell', 'puff', 'spike']);
+const SHAPES = new Set(['daisy', 'cup', 'bell', 'puff', 'spike', 'star', 'wild']);
 
 test('roster covers a 5-stop run with room for variety', () => {
-  assert.equal(ROSTER.length, 26, `expected 26 variants, have ${ROSTER.length}`);
+  assert.equal(ROSTER.length, 49, `expected 49 variants, have ${ROSTER.length}`);
   assert.ok(maxStopsCovered() >= 5, 'roster must cover five stops');
 });
 
@@ -38,11 +39,11 @@ test('every flower has complete data incl. shape + colours', () => {
 test('same-shape variants still look distinct (unique petal colour per shape)', () => {
   const byShape = {};
   for (const f of ROSTER) (byShape[f.shape] ||= []).push(f);
-  assert.deepEqual(Object.keys(byShape).sort(), ['bell', 'cup', 'daisy', 'puff', 'spike']);
+  assert.deepEqual(Object.keys(byShape).sort(), ['bell', 'cup', 'daisy', 'puff', 'spike', 'star', 'wild']);
   for (const [shape, group] of Object.entries(byShape)) {
     const petals = new Set(group.map((f) => f.petalHex));
     assert.equal(petals.size, group.length, `${shape} variants need distinct petalHex`);
-    if (shape !== 'spike') { // spike is the lone lupine — a signature, not a family
+    if (shape !== 'spike') { // spike is a lone signature — a spire, not a family
       assert.ok(group.length >= 3, `${shape} needs at least three colourways`);
     }
   }
@@ -102,7 +103,7 @@ test('segmentMood: similar flowers grow together — mood comes from that stretc
       assert.equal(segmentMood(seed, seg).id, mood.id);
     }
   }
-  assert.equal(segmentMood(42, 9), null); // beyond the run
+  assert.equal(segmentMood(42, maxStopsCovered()), null); // beyond the run
 });
 
 test('bouquetTitle describes mixes', () => {
@@ -133,13 +134,18 @@ test('bouquetTitle tolerates junk input', () => {
   assert.equal(bouquetTitle(null), 'A wildflower bouquet');
 });
 
-test('meadow pools: every id is real, each covers five stops', () => {
+test('meadow pools: every id is real, each covers five stops, and stages never share a flower', () => {
   assert.equal(MEADOW_POOLS.length, TOTAL_STAGES);
+  const all = [];
   for (const pool of MEADOW_POOLS) {
     assert.ok(pool.length >= TOTAL_STOPS * choicesPerStop(),
       `pool too small (${pool.length})`);
+    assert.equal(new Set(pool).size, pool.length, 'pool has no internal repeats');
     for (const id of pool) assert.ok(flowerById(id), `unknown flower ${id}`);
+    all.push(...pool);
   }
+  assert.equal(new Set(all).size, all.length,
+    'a flower must never appear in two stages');
 });
 
 test('sampleChoices honours a themed pool', () => {
@@ -155,4 +161,11 @@ test('lupine joined the roster with a valid mood bucket', () => {
   const f = flowerById('lupine');
   assert.ok(f, 'lupine missing');
   assert.notEqual(moodKeyForHex(f.petalHex), null);
+});
+
+test('speciesScale: sane default and sensible sized plants', () => {
+  assert.equal(speciesScale('not-a-flower'), 1);
+  assert.ok(speciesScale('sunflower') > 1, 'sunflower should read big');
+  assert.ok(speciesScale('cosmos') < 1, 'cosmos should read small');
+  assert.ok(Number.isFinite(speciesScale('lupine')));
 });

@@ -1,7 +1,7 @@
 // Pure random trail generation. No three.js, DOM, or WebAudio — unit-tested.
 import { mulberry32 } from './rand.js';
 import { HILLS } from './hill.js';
-import { flowerById } from './flowers.js?v=4';
+import { flowerById, speciesScale } from './flowers.js?v=5';
 
 // Re-export for tests and callers that import the PRNG from here.
 export { mulberry32 };
@@ -47,7 +47,20 @@ export const FLOWER_VARIANTS = [
   { shape: 'wild', petals: 5, spread: 1.18, bigCenter: 0.26 },   // wild rose
   { shape: 'bell', petals: 5, spread: 0.9, bigCenter: 0.16 },    // nodding bell
   { shape: 'puff', petals: 9, spread: 1.05, bigCenter: 0.14 },   // soft pompom
+  { shape: 'spike', petals: 5, spread: 0.85, bigCenter: 0.14 },  // lupine spire
 ];
+
+// Species shape -> FLOWER_VARIANTS geometry. The meadow grows each flower
+// with its own silhouette so the grass matches the chooser cards.
+const SHAPE_TO_VARIANT = (() => {
+  const m = {};
+  FLOWER_VARIANTS.forEach((v, i) => { if (!(v.shape in m)) m[v.shape] = i; });
+  return m;
+})();
+
+export function variantForShape(shape) {
+  return SHAPE_TO_VARIANT[shape] ?? SHAPE_TO_VARIANT.daisy ?? 0;
+}
 
 // Worst-case |x''| a max-bank turn can follow: a_lat / v^2, a_lat = g*tan(bank).
 export function holdableCurvature(v = CRUISE_SPEED) {
@@ -89,19 +102,22 @@ export function generateTrail({ seed, length = 400, species = null }) {
       const r = Math.sqrt(rand()) * CLUSTER_RADIUS;
       const bx = cx + Math.cos(a) * r;
       const bz = cz + Math.sin(a) * r;
-      const kind = Math.floor(rand() * FLOWER_VARIANTS.length);
       // Flowers grow on stems sticking just above the grass field
       const gy = HILLS.height(bx, bz) + 3.55;
-      // Themed meadows grow their own species pool: bud colours come from
-      // real roster flowers so the field matches the region being flown.
-      const speciesHex = (species && species.length)
-        ? flowerById(species[Math.floor(rand() * species.length)])?.petalHex
+      // Themed meadows grow their own species pool: each bud IS one of the
+      // stage's real flowers — its colour, silhouette and size all come from
+      // that species, so the grass matches the chooser cards.
+      const sp = (species && species.length)
+        ? flowerById(species[Math.floor(rand() * species.length)])
         : null;
+      const kind = sp ? variantForShape(sp.shape) : Math.floor(rand() * FLOWER_VARIANTS.length);
       buds.push({
         x: bx,
         y: gy,
         z: bz,
-        colorHex: speciesHex || PALETTE[Math.floor(rand() * PALETTE.length)],
+        colorHex: sp ? sp.petalHex : PALETTE[Math.floor(rand() * PALETTE.length)],
+        speciesId: sp ? sp.id : null,
+        scale: sp ? speciesScale(sp.id) : 1,
         kind,
         kindIndex: 0, // filled below by the per-kind counter
         cluster,
