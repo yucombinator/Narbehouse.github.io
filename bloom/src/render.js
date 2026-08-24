@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FLOWER_VARIANTS } from './trail.js?v=6';
+import { FLOWER_VARIANTS } from './trail.js?v=7';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=11';
+import { createGrass } from './grass.js?v=12';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -1531,6 +1531,7 @@ export function initRender(canvas) {
               const sc = (1 - kt) * KIND_SCALE[kind] * (b.scale ?? 1);
               dummy.position.set(b.x, crownY, b.z);
               dummy.scale.setScalar(sc);
+              dummy.rotation.set(b.faceTilt ?? 0, b.faceYaw ?? 0, 0);
               if (stemMesh) {
                 stemDummy.position.set(b.x, ground, b.z);
                 stemDummy.rotation.set(0, 0, 0);
@@ -1554,6 +1555,13 @@ export function initRender(canvas) {
             const sc = (0.95 + 0.05 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
             dummy.position.set(b.x, crownY - (1 - open) * 0.18, b.z);
             dummy.scale.setScalar(sc * KIND_SCALE[kind] * (b.scale ?? 1));
+            // Each plant keeps its own facing (toward the sun) plus a gentle
+            // breeze sway — crowns never lock onto the camera.
+            dummy.rotation.set(
+              (b.faceTilt ?? 0) + Math.sin(timeSec * 0.9 + i) * 0.06 * open,
+              b.faceYaw ?? 0,
+              Math.sin(timeSec * 0.6 + i * 1.7) * 0.12 * open
+            );
             if (stemMesh) {
               stemDummy.position.set(b.x, ground, b.z);
               stemDummy.rotation.set(0, 0, Math.sin(timeSec * 1.6 + i) * 0.04 * open); // gentle sway

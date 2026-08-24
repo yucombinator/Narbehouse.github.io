@@ -89,9 +89,9 @@ export function buildGrassClumpGeometry() {
 export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   const hp = hillsParams;
   const TIER1_COUNT = 18000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
-  const TIER2_COUNT = 12000; // Mid domain (180m x 180m) - dense rolling meadows (~1.3m spacing)
-  const TIER3_COUNT = 5000;  // Far ring (260m box, outer 88-130m) - sparse, fogged, hides the domain edge
-  const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 35,000 clumps
+  const TIER2_COUNT = 16000; // Mid domain (180m x 180m) - denser rolling meadows (~1.1m spacing)
+  const TIER3_COUNT = 4500;  // Far ring (260m box, outer 70-130m) - sparse, fogged, hides the domain edge
+  const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 38,500 clumps
 
   const bladeBaseGeo = buildGrassClumpGeometry();
   const grassGeo = new THREE.InstancedBufferGeometry();
@@ -159,7 +159,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
     }
   }
 
-  // 2. Tier 2 (Mid Rolling Field): 18,000 clumps across 180m x 180m box
+  // 2. Tier 2 (Mid Rolling Field): 16,000 clumps across 180m x 180m box
   const t2End = TIER1_COUNT + TIER2_COUNT;
   const t2Grid = Math.ceil(Math.sqrt(TIER2_COUNT));
   const t2Cell = 180.0 / t2Grid;
@@ -172,18 +172,18 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
     }
   }
 
-  // 3. Tier 3 (Far Ring): sparse grass filling the 180m..260m band so the
+  // 3. Tier 3 (Far Ring): sparse grass filling the 70m..130m band so the
   // meadow dissolves into the fog instead of clipping. Only the outer ring is
-  // populated (Tier 2 already covers the inner disc), with a slight overlap
+  // populated (Tier 2 already covers the inner disc), with a generous overlap
   // into Tier 2's fade so there is no density dip at the seam.
   const t3End = t2End + TIER3_COUNT;
-  const t3Grid = Math.ceil(Math.sqrt(TIER3_COUNT * 2.5)); // over-sample, reject the inner disc
+  const t3Grid = Math.ceil(Math.sqrt(TIER3_COUNT * 3.2)); // over-sample, reject the inner disc
   const t3Cell = 260.0 / t3Grid;
   for (let gx = 0; gx < t3Grid && gIdx < t3End; gx++) {
     for (let gz = 0; gz < t3Grid && gIdx < t3End; gz++) {
       const ox = -130.0 + (gx + gRand() * 0.92 + 0.04) * t3Cell;
       const oz = -130.0 + (gz + gRand() * 0.92 + 0.04) * t3Cell;
-      if (Math.hypot(ox, oz) < 88.0) continue; // Tier 2 covers the inner disc
+      if (Math.hypot(ox, oz) < 70.0) continue; // Tier 2 covers the inner disc
       populateClump(gIdx, ox, oz, 260.0, 1.05);
       gIdx++;
     }
@@ -308,7 +308,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
         float edgeFade = 1.0;
         {
           float halfL = L * 0.5;
-          float fadeW = L <= 80.0 ? 9.0 : halfL * 0.28;
+          float fadeW = L <= 80.0 ? 9.0 : halfL * 0.18;
           edgeFade = clamp((halfL - distFromCenter) / fadeW, 0.0, 1.0);
         }
         vEdgeFade = edgeFade;

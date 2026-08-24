@@ -71,15 +71,15 @@ export function generateTrail({ seed, length = 400, species = null }) {
 	const rand = mulberry32(seed);
 	const zStart = 40;                      // trail begins at the player
 	const zEnd = zStart - length;           // and runs toward -z (forward)
-  // The path rolls like wind over a meadow: long-wavelength lateral sway,
-// plus one big sweeping meander layer so the hike actually turns left and
-// right to follow the flowers — never a straight corridor.
+// The path rolls like wind over a meadow: a big meander that swings the hike
+  // left and right a couple of times per stage (a proper S-curve trail), plus
+  // gentler mid-frequency sway so no stretch ever reads as a straight line.
   const layers = 3;
   const freqs = Array.from({ length: layers }, (_, i) =>
-    i === 2 ? 0.0012 + rand() * 0.0015 : 0.004 + rand() * 0.01);
+    i === 2 ? 0.009 + rand() * 0.005 : 0.004 + rand() * 0.01);
   const phases = Array.from({ length: layers }, () => rand() * Math.PI * 2);
   const amps = freqs.map((f, i) =>
-    i === 2 ? 10 + rand() * 10 : (i === 0 ? 4 + rand() * 4 : 2.5 + rand() * 2.5));
+    i === 2 ? 12 + rand() * 10 : (i === 0 ? 4 + rand() * 4 : 2.5 + rand() * 2.5));
 
   // The flight path hovers ~FLY_ALT above the terrain: the petal follows the
   // hills' undulations (ground level) plus a float altitude, so it dips into
@@ -120,6 +120,10 @@ export function generateTrail({ seed, length = 400, species = null }) {
         colorHex: sp ? sp.petalHex : PALETTE[Math.floor(rand() * PALETTE.length)],
         speciesId: sp ? sp.id : null,
         scale: sp ? speciesScale(sp.id) : 1,
+        // Flowers face the sun, not the player: a per-plant yaw + nod so the
+        // meadow reads as a field of varied blooms, never a wall of petals.
+        faceYaw: rand() * Math.PI * 2,
+        faceTilt: (rand() - 0.5) * 0.45,
         kind,
         kindIndex: 0, // filled below by the per-kind counter
         cluster,

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=23';
-import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=6';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=24';
+import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=7';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
 import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, speciesScale } from './flowers.js?v=5';
@@ -1137,16 +1137,18 @@ function addStopSpill(t) {
       const x = t.pointAt(z).x + (rng() - 0.5) * 6.5;
       const f = offers[Math.floor(rng() * offers.length)];
 extra.push({
-          x,
-          y: HILLS.height(x, z) + 2.4,
-          z: z + (rng() - 0.5) * 2.5,
-          colorHex: parseInt(f.petalHex.slice(1), 16),
-          speciesId: f.id,
-          scale: speciesScale(f.id) * 1.0,
-          kind: variantForShape(f.shape),
-          kindIndex: 0,
-          cluster: -(i + 1), // sentinel: spill bud for stop i
-        });
+        x,
+        y: HILLS.height(x, z) + 2.4,
+        z: z + (rng() - 0.5) * 2.5,
+        colorHex: parseInt(f.petalHex.slice(1), 16),
+        speciesId: f.id,
+        scale: speciesScale(f.id) * 1.0,
+        faceYaw: rng() * Math.PI * 2,
+        faceTilt: (rng() - 0.5) * 0.45,
+        kind: variantForShape(f.shape),
+        kindIndex: 0,
+        cluster: -(i + 1), // sentinel: spill bud for stop i
+      });
     }
   }
   t.buds.push(...extra);
@@ -1178,6 +1180,8 @@ function addStopFlowers(t) {
           colorHex: parseInt(f.petalHex.slice(1), 16),
           speciesId: f.id,
           scale: speciesScale(f.id) * 2.0,
+          faceYaw: (i * 1.7 + oi * 2.1 + k * 0.9) % (Math.PI * 2),
+          faceTilt: (((i * 0.37 + k * 0.73) % 1) - 0.5) * 0.45,
           kind: variantForShape(f.shape),
           kindIndex: 0,
           cluster: -(i + 1),
