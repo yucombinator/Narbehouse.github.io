@@ -21,7 +21,16 @@
     font-size: 26px; font-weight: 700; letter-spacing: 0.02em;
     text-shadow: 0 1px 3px rgba(255,255,255,0.8);
   }
-  #hudCount { background: rgba(255,255,255,0.55); border-radius: 14px; padding: 6px 16px; }
+  /* Debug HUD: monospace metrics, toggled with the backtick key. Hidden by
+     default; pointer-events off so it never blocks the game. */
+  #debugHud {
+    position: fixed; left: 12px; top: 12px; z-index: 30;
+    background: rgba(10, 12, 16, 0.72); color: #9fe8a8;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    padding: 8px 12px; border-radius: 8px; white-space: pre;
+    pointer-events: none; display: none; letter-spacing: 0;
+  }
+  #debugHud.visible { display: block; }
 
   /* Title card overlay */
   #title {
@@ -307,9 +316,7 @@
 </head>
 <body>
 <div id="game"></div>
-<div id="hud">
-  <span id="hudCount">0 / 0</span>
-</div>
+<div id="debugHud" aria-hidden="true"></div>
 <button id="pauseBtn" type="button" aria-label="Pause" title="Pause" hidden>⏸</button>
 
 <div id="title">
@@ -427,6 +434,6 @@
   </div>
 </div>
 
-<script type="module" src="./src/main.js?v=31"></script>
+<script type="module" src="./src/main.js?v=32"></script>
 </body>
 </html>

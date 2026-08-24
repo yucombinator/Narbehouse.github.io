@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=26';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=27';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=8';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
@@ -98,6 +98,39 @@ window.addEventListener('keyup', (e) => {
     gustHoldTimer = null;
   }
 });
+
+// --- Debug HUD (toggle with the backtick key) ---------------------------
+// Monospace overlay with live FPS and renderer metrics. Listens in the
+// capture phase and ignores game state, so it works on the title screen,
+// during stops/ceremonies, and in pause alike.
+const debugEl = document.getElementById('debugHud');
+let debugOn = false;
+let fpsSmooth = 60; // exponential moving average of measured fps
+let lastFrameT = performance.now();
+const debugText = () => {
+  const info = render?.renderer?.info;
+  const gl = render?.renderer?.getContext?.();
+  const lines = [];
+  lines.push(`fps        ${fpsSmooth.toFixed(0)}`);
+  lines.push(`frame ms   ${(1000 / Math.max(1, fpsSmooth)).toFixed(2)}`);
+  if (info) {
+    lines.push(`draw calls ${info.render.calls}`);
+    lines.push(`triangles  ${(info.render.triangles / 1e6).toFixed(2)}M`);
+    lines.push(`points     ${info.render.points}`);
+    lines.push(`geoms      ${info.memory.geometries}`);
+    lines.push(`textures   ${info.memory.textures}`);
+  }
+  if (render) {
+    lines.push(`pixel ratio ${render.renderer.getPixelRatio().toFixed(2)}`);
+  }
+  return lines.join('\n');
+};
+window.addEventListener('keydown', (e) => {
+  if (e.key === '`' || e.key === '~') {
+    debugOn = !debugOn;
+    if (debugEl) debugEl.classList.toggle('visible', debugOn);
+  }
+}, true);
 
 // Canvas halves steer too.
 function canvasSteer(e, value) {
@@ -1355,6 +1388,14 @@ function gustUpdate(dt) {
 
 function loop() {
   const dt = Math.min(clock.getDelta(), 1 / 20);
+  // Debug HUD: smooth FPS from real frame intervals (dt is clamped to 1/20).
+  if (debugOn) {
+    const now = performance.now();
+    const gap = now - lastFrameT;
+    lastFrameT = now;
+    const inst = 1000 / Math.max(1, gap);
+    fpsSmooth += (inst - fpsSmooth) * 0.08; // EMA, ~12-frame lag
+  }
   const wind = windAt(clock.elapsedTime, meadowSeed);
   // The world holds its breath while Ben chooses a flower, watches the
   // ceremony, or pauses; ambient petals keep swaying gently in the background.
@@ -1403,6 +1444,7 @@ function loop() {
   );
   render?.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank + windLean, clock.elapsedTime, windLevel);
   if (render) render.renderer.render(render.scene, render.camera);
+  if (debugOn && debugEl) debugEl.textContent = debugText();
   updatePauseBtn();
   requestAnimationFrame(loop);
 }
