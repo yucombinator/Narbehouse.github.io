@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=30';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=31';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=8';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
@@ -109,10 +109,15 @@ let fpsSmooth = 60; // exponential moving average of measured fps
 let lastFrameT = performance.now();
 const debugText = () => {
   const info = render?.renderer?.info;
-  const gl = render?.renderer?.getContext?.();
   const lines = [];
-  lines.push(`fps        ${fpsSmooth.toFixed(0)}`);
-  lines.push(`frame ms   ${(1000 / Math.max(1, fpsSmooth)).toFixed(2)}`);
+  const gpu = render?.gpuMs?.() ?? 0;
+  // Honest fps: rAF only measures the main thread. When the GPU is the real
+  // bottleneck (gpu ms > rAF ms) the presented rate is lower than rAF claims.
+  const mainMs = 1000 / Math.max(1, fpsSmooth);
+  const trueFps = 1000 / Math.max(1, mainMs, gpu);
+  lines.push(`fps        ${trueFps.toFixed(0)}`);
+  lines.push(`frame ms   ${mainMs.toFixed(2)}`);
+  if (gpu > 0) lines.push(`gpu ms     ${gpu.toFixed(2)}`);
   if (info) {
     lines.push(`draw calls ${info.render.calls}`);
     lines.push(`triangles  ${(info.render.triangles / 1e6).toFixed(2)}M`);
@@ -1449,7 +1454,10 @@ function loop() {
     (input.left || input.right ? 0.75 : 0) + ambWind * (frozen ? 0.15 : 0.5),
   );
   render?.frame(dt, { x: petal.x, y: petal.y, z: petal.z }, petal.bank + windLean, clock.elapsedTime, windLevel);
-  if (render) render.renderer.render(render.scene, render.camera);
+  if (render) {
+    if (render.renderScene) render.renderScene();
+    else render.renderer.render(render.scene, render.camera);
+  }
   if (debugOn && debugEl) debugEl.textContent = debugText();
   updatePauseBtn();
   requestAnimationFrame(loop);

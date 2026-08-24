@@ -1747,11 +1747,67 @@ const breathMat = new THREE.ShaderMaterial({
   let breathCursor = 0;
   let breathAcc = 0;
 
+  // --- GPU frame time (honest fps) ---------------------------------------
+  // rAF only measures the main thread: when the GPU is the bottleneck it
+  // reports a higher rate than is actually presented. Where the extension
+  // exists, a disjoint timer query wraps each render() to read true GPU
+  // milliseconds; the HUD uses max(rAF ms, gpu ms) for its displayed fps.
+  const gl = renderer.getContext();
+  let timerExt = null;
+  try {
+    timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2')
+      || gl.getExtension('WEBGL_disjoint_timer_query');
+  } catch { /* extension unavailable */ }
+  let gpuMs = 0;                 // EMA of true GPU frame time (ms)
+  const GPU_Q = 4;               // async results arrive a couple frames late
+  let gpuQuery = new Array(GPU_Q).fill(null);
+  let gpuQueryIdx = 0;
+  let gpuQueryStart = null;
+  function beginGpuQuery() {
+    if (!timerExt) return;
+    try {
+      gpuQueryStart = timerExt.createQueryEXT();
+      timerExt.beginQueryEXT(timerExt.TIME_ELAPSED_EXT, gpuQueryStart);
+    } catch { /* fall through */ }
+  }
+  function endGpuQuery() {
+    if (!timerExt || !gpuQueryStart) return;
+    try {
+      timerExt.endQueryEXT(timerExt.TIME_ELAPSED_EXT);
+      gpuQuery[gpuQueryIdx % GPU_Q] = gpuQueryStart;
+      gpuQueryIdx++;
+    } catch { /* fall through */ }
+    gpuQueryStart = null;
+  }
+  function readGpuQueries() {
+    if (!timerExt) return;
+    try {
+      for (let i = 0; i < GPU_Q; i++) {
+        const q = gpuQuery[i];
+        if (!q) continue;
+        if (timerExt.getQueryObjectEXT(q, timerExt.QUERY_RESULT_AVAILABLE_EXT)) {
+          const t = timerExt.getQueryObjectEXT(q, timerExt.QUERY_RESULT_EXT) / 1e6;
+          if (Number.isFinite(t) && t > 0) gpuMs += (Math.min(t, 100) - gpuMs) * 0.2;
+          gpuQuery[i] = null;
+        }
+      }
+    } catch { /* ignore disjoint results */ }
+  }
+
   const api = {
     scene,
     camera,
     renderer,
     petal,
+    renderScene() {
+      readGpuQueries();
+      beginGpuQuery();
+      renderer.render(scene, camera);
+      endGpuQuery();
+    },
+    gpuMs() {
+      return timerExt ? gpuMs : 0;
+    },
     applyTheme,
     currentThemeIndex() { return themeIndex; },
     setBoost(v) { boostTarget = Math.max(0, Math.min(1, v || 0)); },
