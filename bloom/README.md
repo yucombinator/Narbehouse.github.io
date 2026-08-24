@@ -17,6 +17,11 @@ your petal never shrinks.
 | Click/tap left or right half of the canvas | Steer that way |
 | `M` | Toggle ambient music (also on the title card) |
 
+The title card also has a **Distant mountains & lakes** checkbox (default on):
+a low-poly mountain range with snowcapped massifs and occasional lakes in the
+valleys, rendered on the horizon. Uncheck to fly over open plains; your
+preference is remembered.
+
 Holding both turns straight. Releasing both returns to level flight.
 
 ## Audio

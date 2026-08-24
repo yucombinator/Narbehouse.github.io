@@ -469,6 +469,24 @@ function applyTtsPref() {
   }
 }
 if (ttsCheck) ttsCheck.addEventListener('change', applyTtsPref);
+
+// Optional distant environment (mountains + lakes). Toggling rebuilds the
+// scene, so apply on the title card and reload.
+const ENV_KEY = 'petalBloom.env';
+const envCheck = document.getElementById('envOn');
+if (envCheck) {
+  try {
+    envCheck.checked = storage.getItem(ENV_KEY) !== '0';
+  } catch {
+    envCheck.checked = true;
+  }
+  envCheck.addEventListener('change', () => {
+    try {
+      storage.setItem(ENV_KEY, envCheck.checked ? '1' : '0');
+    } catch { /* storage unavailable */ }
+    location.reload();
+  });
+}
 function speak(text, rate = 1, onEnd = null) {
   if (!ttsOn || !('speechSynthesis' in window)) {
     if (onEnd) onEnd();

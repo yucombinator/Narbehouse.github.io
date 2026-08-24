@@ -638,6 +638,416 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function buildMountainRange() {
+  const pos = [];
+  const col = [];
+  const meta = [];
+  const index = [];
+  const clamp = THREE.MathUtils.clamp;
+  // Per-vertex: chain metadata packed for the shader as a vec4 —
+  // (snowLine, green, tint, 0). Constant within a chain, so the fragment
+  // shader can derive rock/snow/strata from continuous local-space fields
+  // instead of per-quad vertex colours.
+  const push = (x, y, z, r, g, b, m) => {
+    pos.push(x, y, z);
+    col.push(r, g, b);
+    meta.push(m[0], m[1], m[2], 0);
+  };
+
+  // 1D value noise (hash lattice + smoothstep) — the base for ridged noise.
+  function vnoise(x, seed) {
+    const i = Math.floor(x);
+    const f = x - i;
+    const u = f * f * (3 - 2 * f);
+    const a = hashOf(i, seed);
+    const b = hashOf(i + 1, seed);
+    return a + (b - a) * u; // 0..1
+  }
+  function hashOf(n, seed) {
+    const s = Math.sin(n * 127.1 + seed * 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  }
+
+  // Ridged multifractal (1D): folds noise into sharp V-shaped ridges and
+  // weights each octave by how prominent the previous ridges were, so the
+  // biggest massifs carry the most detail — the classic mountain-range
+  // generator (Acerola / Josh's Channel / The Mountains of Madness). This
+  // gives jagged skylines; plain additive noise only makes smooth bumps.
+  function ridged(a, seed) {
+    let amp = 0.5, freq = 1, sum = 0, norm = 0, prev = 1;
+    for (let o = 0; o < 5; o++) {
+      let n = 1 - Math.abs(vnoise(a * freq + seed * 13.7, seed + o * 101) * 2 - 1);
+      n *= n;
+      const w = Math.pow(Math.max(0, Math.min(1, prev * 1.5)), 0.8);
+      sum += n * amp * w;
+      norm += amp * w;
+      prev = n;
+      amp *= 0.5;
+      freq *= 2.1;
+    }
+    return sum / norm; // 0..1
+  }
+
+  // Massif envelope (where big peaks cluster) modulated by ridged detail, so
+  // crests are sharp and jagged while the valleys between massifs stay low.
+  function profile(a, peaks, seed) {
+    let env = 0;
+    for (const p of peaks) env = Math.max(env, p.h * Math.exp(-((a - p.a) ** 2) / (2 * p.w * p.w)));
+    const r = ridged(a * 1.8 + seed, seed);
+    return Math.max(4, env * (0.60 + 1.05 * Math.pow(r, 1.15)));
+  }
+
+  // One ridgeline: front and back faces fan from the crest down to the plain.
+  function ridgeChain(o) {
+    const n = o.n;
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      // Flat plateau across the chain; only the ends roll off to the plain.
+      const taper = clamp(Math.min(t, 1 - t) / 0.16, 0, 1);
+      const a = o.a0 + (o.a1 - o.a0) * t;
+      const r = o.r0 + (o.r1 - o.r0) * t + (Math.random() - 0.5) * 3;
+      const h = profile(a, o.peaks, o.seed) * taper;
+      pts.push({ a, r, h });
+    }
+    // Per-chain base colour (rock or pine). Every vertex of the chain shares
+    // one colour — all texture variation is computed in the fragment shader
+    // from continuous local-space fields, so there is nothing for adjacent
+    // quads to step between. This kills the vertical banding the per-vertex
+    // snow ramp produced.
+    const base = o.green ? [0.42, 0.49, 0.34] : [o.rock[0], o.rock[1], o.rock[2]];
+    // Metadata for the shader: (snowLine, green, tint). snowLine 999 = no snow.
+    const chainMeta = [o.snowLine, o.green ? 1 : 0, o.tint];
+    // Indexed emission: each control point contributes 3 shared vertices
+    // (front base, crest, back base). Adjacent quads share vertices, so
+    // computeVertexNormals yields SMOOTH normals along the ridge — the sun
+    // shades continuously instead of stepping at every quad boundary
+    // (which read as vertical bands on the non-indexed geometry).
+    const v0 = pos.length / 3; // global vertex offset for this chain
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const sa = Math.sin(p.a), ca = Math.cos(p.a);
+      // front base
+      pos.push((p.r - o.front) * sa, o.baseY, -(p.r - o.front) * ca);
+      col.push(base[0], base[1], base[2]);
+      meta.push(chainMeta[0], chainMeta[1], chainMeta[2], 0);
+      // crest
+      pos.push(p.r * sa, p.h, -p.r * ca);
+      col.push(base[0], base[1], base[2]);
+      meta.push(chainMeta[0], chainMeta[1], chainMeta[2], 0);
+      // back base
+      pos.push((p.r + o.back) * sa, o.baseY - 1, -(p.r + o.back) * ca);
+      col.push(base[0], base[1], base[2]);
+      meta.push(chainMeta[0], chainMeta[1], chainMeta[2], 0);
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const F0 = v0 + i * 3, C0 = F0 + 1, B0 = F0 + 2;
+      const F1 = v0 + (i + 1) * 3, C1 = F1 + 1, B1 = F1 + 2;
+      // front face (camera side)
+      index.push(F0, C0, F1, C0, C1, F1);
+      // back face (shadow side)
+      index.push(C0, B0, C1, B0, B1, C1);
+    }
+  }
+
+  // --- Back range: three separated snowy massif groups. Gaps between the
+  // groups are valleys that drop all the way to the plain, so the range
+  // reads as massifs, not a continuous wall.
+  ridgeChain({
+    n: 30, a0: -1.2, a1: -0.55, r0: 330, r1: 352, front: 5, back: 12, baseY: -2,
+    peaks: [{ a: -1.05, h: 86, w: 0.22 }, { a: -0.75, h: 68, w: 0.18 }],
+    seed: 1.7, snowLine: 96, snowBand: 16,
+    rock: [0.54, 0.58, 0.66], rockDark: [0.28, 0.31, 0.38], snow: [0.94, 0.97, 1.0],
+    tint: 0.99, green: false,
+  });
+  ridgeChain({
+    n: 34, a0: -0.3, a1: 0.3, r0: 318, r1: 344, front: 5, back: 12, baseY: -2,
+    peaks: [{ a: -0.1, h: 92, w: 0.20 }, { a: 0.15, h: 78, w: 0.18 }],
+    seed: 2.9, snowLine: 96, snowBand: 16,
+    rock: [0.55, 0.59, 0.67], rockDark: [0.29, 0.32, 0.39], snow: [0.94, 0.97, 1.0],
+    tint: 1.02, green: false,
+  });
+  ridgeChain({
+    n: 30, a0: 0.55, a1: 1.2, r0: 332, r1: 356, front: 5, back: 12, baseY: -2,
+    peaks: [{ a: 0.82, h: 88, w: 0.22 }, { a: 1.12, h: 64, w: 0.18 }],
+    seed: 4.1, snowLine: 96, snowBand: 16,
+    rock: [0.53, 0.57, 0.65], rockDark: [0.27, 0.30, 0.37], snow: [0.94, 0.97, 1.0],
+    tint: 0.98, green: false,
+  });
+
+  // --- Distant continuations: the range recedes into the plain instead of
+  // stopping. Low, hazy ridges fade out toward ±2.9 rad (≈166°) so the edge
+  // is beyond any drag-look angle — no hard cliff from any view.
+  ridgeChain({
+    n: 26, a0: -2.9, a1: -1.22, r0: 350, r1: 372, front: 4, back: 10, baseY: -2,
+    peaks: [{ a: -2.2, h: 30, w: 0.5 }, { a: -1.7, h: 26, w: 0.3 }],
+    seed: 11.2, snowLine: 999, snowBand: 1,
+    rock: [0.55, 0.59, 0.67], rockDark: [0.29, 0.32, 0.39], snow: [0.94, 0.97, 1.0],
+    tint: 0.96, green: false,
+  });
+  ridgeChain({
+    n: 26, a0: 1.22, a1: 2.9, r0: 354, r1: 374, front: 4, back: 10, baseY: -2,
+    peaks: [{ a: 1.7, h: 26, w: 0.3 }, { a: 2.2, h: 30, w: 0.5 }],
+    seed: 12.4, snowLine: 999, snowBand: 1,
+    rock: [0.55, 0.59, 0.67], rockDark: [0.29, 0.32, 0.39], snow: [0.94, 0.97, 1.0],
+    tint: 0.96, green: false,
+  });
+
+  // --- Mid ridges: sit in front of the valley mouths, lower than the back
+  // massifs, so the valleys read as depth-layered passes onto the range.
+  ridgeChain({
+    n: 22, a0: -0.55, a1: -0.2, r0: 272, r1: 290, front: 4, back: 10, baseY: -2,
+    peaks: [{ a: -0.4, h: 48, w: 0.20 }, { a: -0.28, h: 40, w: 0.16 }],
+    seed: 5.3, snowLine: 999, snowBand: 1,
+    rock: [0.52, 0.56, 0.63], rockDark: [0.27, 0.30, 0.36], snow: [0.94, 0.97, 1.0],
+    tint: 1.03, green: false,
+  });
+  ridgeChain({
+    n: 22, a0: 0.2, a1: 0.55, r0: 268, r1: 288, front: 4, back: 10, baseY: -2,
+    peaks: [{ a: 0.35, h: 50, w: 0.20 }, { a: 0.48, h: 40, w: 0.16 }],
+    seed: 6.6, snowLine: 999, snowBand: 1,
+    rock: [0.52, 0.56, 0.63], rockDark: [0.27, 0.30, 0.36], snow: [0.94, 0.97, 1.0],
+    tint: 0.97, green: false,
+  });
+
+  // --- Pine foothills: the nearest broken chain of forested ridges.
+  const foot = (o) => ridgeChain({ front: 3, back: 8, baseY: -2, green: true, maxH: 30,
+    snowLine: 999, snowBand: 1, tint: 1.0, ...o });
+  foot({ n: 16, a0: -1.1, a1: -0.75, r0: 230, r1: 244,
+    peaks: [{ a: -0.95, h: 24, w: 0.20 }], seed: 7.2 });
+  foot({ n: 16, a0: -0.4, a1: -0.05, r0: 226, r1: 240,
+    peaks: [{ a: -0.25, h: 20, w: 0.18 }], seed: 8.4 });
+  foot({ n: 16, a0: 0.25, a1: 0.6, r0: 228, r1: 242,
+    peaks: [{ a: 0.42, h: 22, w: 0.20 }], seed: 9.6 });
+  foot({ n: 16, a0: 0.95, a1: 1.3, r0: 230, r1: 246,
+    peaks: [{ a: 1.15, h: 26, w: 0.22 }], seed: 10.8 });
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('aMeta', new THREE.Float32BufferAttribute(meta, 4));
+  geo.setIndex(index);
+  // Shared ridge vertices + indexed emission => SMOOTH normals along the
+  // ridge, so the sun shades continuously instead of stepping per quad.
+  geo.computeVertexNormals();
+
+  // Procedural rock texturing in the fragment shader. Flat vertex colors read
+  // as plastic; real mountains have grain, scree on steep faces, strata, and
+  // ragged snowlines. We replicate the scene lights (hemisphere + sun + rim)
+  // in-shader and layer 3-octave value noise for detail, keyed to the baked
+  // height/rock colour so snow and haze stay consistent with the geometry.
+  const mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    fog: false,
+    vertexColors: true,
+    vertexShader: `
+      // Local-space position and per-chain metadata. All texture variation
+      // is computed from these continuous fields in the fragment shader, so
+      // there is no per-vertex colour stepping between quads.
+      attribute vec4 aMeta; // custom — three r160 does not inject it
+      varying vec3 vLocal;
+      varying vec3 vNormal;
+      varying vec4 vMeta;
+      varying vec3 vColor;
+      void main() {
+        vLocal = position;
+        vNormal = normalize(normalMatrix * normal);
+        vMeta = aMeta;
+        vColor = color;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      varying vec3 vLocal;
+      varying vec3 vNormal;
+      varying vec4 vMeta;
+
+      float hash(vec3 p) {
+        p = fract(p * 0.3183099 + 0.1);
+        p *= 17.0;
+        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+      }
+      float vnoise(vec3 x) {
+        vec3 i = floor(x);
+        vec3 f = fract(x);
+        f = f * f * (3.0 - 2.0 * f);
+        float n000 = hash(i);
+        float n100 = hash(i + vec3(1.0, 0.0, 0.0));
+        float n010 = hash(i + vec3(0.0, 1.0, 0.0));
+        float n110 = hash(i + vec3(1.0, 1.0, 0.0));
+        float n001 = hash(i + vec3(0.0, 0.0, 1.0));
+        float n101 = hash(i + vec3(1.0, 0.0, 1.0));
+        float n011 = hash(i + vec3(0.0, 1.0, 1.0));
+        float n111 = hash(i + vec3(1.0, 1.0, 1.0));
+        return mix(
+          mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+          mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
+          f.z);
+      }
+      float fbm(vec3 p) {
+        return vnoise(p) * 0.55 + vnoise(p * 2.3) * 0.28 + vnoise(p * 5.1) * 0.17;
+      }
+
+      void main() {
+        // Flat facet normal — the geometry is non-indexed with computed
+        // normals, so every vertex already carries its face normal.
+        vec3 N = normalize(vNormal);
+        if (!gl_FrontFacing) N = -N;
+
+        // Smooth normals (indexed geometry, shared ridge vertices) already
+        // shade continuously along the ridge; no bump needed.
+        float snowLine = vMeta.x;
+        float green = vMeta.y;
+        float tint = vMeta.z;
+
+        // Rock/pine base — gray-blue rock or pine green, brightened with height.
+        // (Constant per chain; all detail comes from the noise fields below.)
+        vec3 rockBase = vec3(0.52, 0.56, 0.64);
+        vec3 col = rockBase * (0.72 + 0.26 * clamp(vLocal.y / 70.0, 0.0, 1.0));
+        if (green > 0.5) {
+          col = mix(vec3(0.30, 0.36, 0.24), vec3(0.46, 0.52, 0.36), clamp(vLocal.y / 30.0, 0.0, 1.0));
+        }
+        col *= tint;
+
+        // Continuous noise fields in LOCAL space — glued to the geometry,
+        // so no world-position swimming as the walker moves. Only broad and
+        // mid frequencies: fine grain at this distance aliases to static.
+        float n1 = fbm(vLocal * 0.10);  // broad structure
+        float n2 = fbm(vLocal * 0.38);  // mid detail
+
+        // Snow from local height + noise-displaced snowline: ragged but
+        // continuous along the ridge (no per-quad banding). Wide transition
+        // so only the upper massifs carry a bright cap.
+        float snow = 0.0;
+        if (snowLine < 900.0) {
+          float line = snowLine + (n1 - 0.5) * 12.0;
+          snow = smoothstep(line, line + 22.0, vLocal.y);
+        }
+        snow *= 1.0 - green;
+
+        // Rock grain — subtle, broad so it does not alias.
+        col *= 0.96 + 0.08 * n2 * (1.0 - snow);
+
+        // Scree: loose darker talus on steep faces, absent under snow.
+        float slope = 1.0 - clamp(N.y, 0.0, 1.0);
+        vec3 screeCol = mix(vec3(0.55, 0.53, 0.50), vec3(0.38, 0.36, 0.34), n2);
+        col = mix(col, screeCol, smoothstep(0.30, 0.60, slope) * (1.0 - snow) * 0.45);
+
+        // Strata banding along the height axis, gently broken by noise.
+        float band = sin(vLocal.y * 0.6 + n1 * 5.0) * 0.5 + 0.5;
+        col *= 0.94 + 0.10 * band * (1.0 - snow);
+
+        // Snow brightening (only where the chain allows snow) — soft blue-
+        // white, not pure white, so caps stay readable under full sun.
+        col = mix(col, vec3(0.86, 0.90, 0.97) * tint, snow);
+
+        // Atmospheric haze by distance — the mountains sit 200-370 units
+        // out; far ridges melt toward the horizon instead of glowing white.
+        float dist = length(vLocal.xz);
+        float haze = clamp((dist - 160.0) / 240.0, 0.0, 1.0) * 0.4;
+        col = mix(col, vec3(0.72, 0.84, 0.96), haze * (1.0 - snow * 0.4));
+
+        // Lighting: hemisphere + sun + rim, matching the scene constants.
+        vec3 skyC = vec3(0.81, 0.91, 1.00) * 0.75;
+        vec3 gndC = vec3(0.48, 0.62, 0.29) * 0.6;
+        vec3 hemi = mix(gndC, skyC, N.y * 0.5 + 0.5);
+        vec3 sunDir = normalize(vec3(40.0, 70.0, 25.0));
+        float sunD = max(dot(N, sunDir), 0.0);
+        vec3 sunC = vec3(1.0, 0.95, 0.85) * 0.8 * sunD;
+        vec3 rimDir = normalize(vec3(-45.0, 20.0, -30.0));
+        float rimD = pow(max(dot(N, rimDir), 0.0), 1.6);
+        vec3 rimC = vec3(0.75, 0.89, 1.0) * 0.35 * rimD;
+        vec3 light = hemi + sunC + rimC;
+
+        // Soft shoulder: 1 - exp(-x) keeps sunlit faces from clipping to
+        // pure white while preserving the lit/dark contrast.
+        vec3 linear = 1.0 - exp(-col * light * 1.35);
+
+        // Output in sRGB like the renderer's built-in materials (the
+        // renderer's output color space is sRGB; ShaderMaterial must encode
+        // manually since three does not inject linearToOutputTexel here).
+        vec3 encoded = mix(pow(linear, vec3(1.0 / 2.2)), linear * 12.92,
+          vec3(lessThanEqual(linear, vec3(0.0031308))));
+        gl_FragColor = vec4(encoded, 1.0);
+      }
+    `,
+  }));
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+// Occasional distant lakes — flat blue water in the valleys ahead of the
+// range, grounded on the terrain at their world position. Randomized in
+// count (0-2), size, and position every session. Depth-tested like normal
+// geometry (a hill in front correctly occludes them), and placed only where
+// the camera-to-lake sight line clears the intervening terrain.
+function buildLakes() {
+  const count = Math.random() < 0.6 ? 1 + Math.floor(Math.random() * 2) : 0;
+  if (!count) return null;
+  const pos = [];
+  const col = [];
+  const index = [];
+  const lakeMat = new THREE.MeshBasicMaterial({
+    color: 0x3f7fb5, transparent: true, opacity: 0.85, fog: false, side: THREE.DoubleSide,
+  });
+  const camY = HILLS.height(0, 0) + 6; // camera rides ~6 above local terrain
+  for (let l = 0; l < count; l++) {
+    let cx = 0, cz = 0, ground = -10, lakeW = 30, lakeD = 30, ok = false;
+    for (let attempt = 0; attempt < 14 && !ok; attempt++) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const a = side * (0.3 + Math.random() * 0.6);        // 0.3-0.9 rad off center
+      const r = 140 + Math.random() * 70;                  // 140-210 out
+      cx = Math.sin(a) * r;
+      cz = -Math.cos(a) * r;
+      ground = HILLS.height(cx, cz);
+      // Sight-line check: sample the ray from the camera to the lake centre;
+      // reject if any intervening terrain pokes above it.
+      const lakeY = ground + 0.6;
+      const steps = 12;
+      ok = true;
+      for (let s = 1; s < steps; s++) {
+        const t = s / steps;
+        const px = cx * t, pz = cz * t;
+        const rayY = camY + (lakeY - camY) * t;
+        if (HILLS.height(px, pz) > rayY - 0.3) { ok = false; break; }
+      }
+      // Depression: the shoreline should read as a lake bed, not a hilltop.
+      if (ok) {
+        const n = 6;
+        let sum = 0;
+        for (let i = 0; i < n; i++) {
+          const tt = (i / n) * Math.PI * 2;
+          sum += HILLS.height(cx + Math.cos(tt) * 25, cz + Math.sin(tt) * 25);
+        }
+        ok = sum / n - ground > 0.25;
+      }
+    }
+    if (!ok) continue;
+    lakeW = 26 + Math.random() * 34;                       // lake width
+    lakeD = lakeW * (0.5 + Math.random() * 0.7);           // depth (ellipse)
+    const seg = 14;
+    const v0 = pos.length / 3;
+    for (let i = 0; i < seg; i++) {
+      const t = (i / seg) * Math.PI * 2;
+      pos.push(cx + Math.cos(t) * lakeW * 0.5, ground + 0.6, cz + Math.sin(t) * lakeD * 0.5);
+      col.push(1, 1, 1);
+    }
+    for (let i = 1; i < seg - 1; i++) {
+      index.push(v0, v0 + i, v0 + i + 1);
+    }
+  }
+  if (pos.length === 0) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, lakeMat);
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 export function initRender(canvas) {
   // preserveDrawingBuffer stays off: keeping it forced a full framebuffer
   // copy-back every frame — one of the heaviest avoidable costs.
@@ -1223,18 +1633,18 @@ export function initRender(canvas) {
     clouds.push(c);
   }
 
-  // Breath: a warm whisper of air trailing along the petal's recent path.
-  // Soft round drifts — no hard edges, never more than a hint of opacity —
-  // replacing the old rectangular wind slivers that read as gray confetti.
-  const BREATH_N = 90;
-  const breathGeo = new THREE.BufferGeometry();
-  const bPos = new Float32Array(BREATH_N * 3);
-  const bSize = new Float32Array(BREATH_N);
-  const bAlpha = new Float32Array(BREATH_N);
-  breathGeo.setAttribute('position', new THREE.BufferAttribute(bPos, 3));
-  breathGeo.setAttribute('aSize', new THREE.BufferAttribute(bSize, 1));
-  breathGeo.setAttribute('aAlpha', new THREE.BufferAttribute(bAlpha, 1));
-  const breathMat = new THREE.ShaderMaterial({
+// Breath: a warm whisper of air trailing along the petal's recent path.
+// Soft round drifts — no hard edges, never more than a hint of opacity —
+// replacing the old rectangular wind slivers that read as gray confetti.
+const BREATH_N = 90;
+const breathGeo = new THREE.BufferGeometry();
+const bPos = new Float32Array(BREATH_N * 3);
+const bSize = new Float32Array(BREATH_N);
+const bAlpha = new Float32Array(BREATH_N);
+breathGeo.setAttribute('position', new THREE.BufferAttribute(bPos, 3));
+breathGeo.setAttribute('aSize', new THREE.BufferAttribute(bSize, 1));
+breathGeo.setAttribute('aAlpha', new THREE.BufferAttribute(bAlpha, 1));
+const breathMat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
     vertexShader: /* glsl */ `
@@ -1261,6 +1671,25 @@ export function initRender(canvas) {
   const breath = [];
   for (let i = 0; i < BREATH_N; i++) {
     breath.push({ life: -1, max: 1, x: 0, y: -500, z: 0, vx: 0, vy: 0, vz: 0, s0: 0.4 });
+  }
+
+  // Optional distant environment (backported from Frolic): a low-poly
+  // mountain range on the horizon plus occasional lakes in the valleys.
+  // Toggle with the "Distant mountains & lakes" checkbox (petalBloom.env,
+  // default on). Skipped entirely when off — no scene cost.
+  let envMountains = null;
+  let envLakes = null;
+  {
+    let envOn = true;
+    try {
+      envOn = localStorage.getItem('petalBloom.env') !== '0';
+    } catch { /* storage unavailable */ }
+    if (envOn) {
+      envMountains = buildMountainRange();
+      scene.add(envMountains);
+      envLakes = buildLakes();
+      if (envLakes) scene.add(envLakes);
+    }
   }
   let breathCursor = 0;
   let breathAcc = 0;
@@ -1615,26 +2044,31 @@ export function initRender(canvas) {
         c.position.z = camera.position.z + c.userData.zo;
       }
 
-      // Breath trail: emit soft drifts along the petal's recent path. The
-      // breath deepens as the basket fills — a fuller day breathes harder.
-      // Each puff rises lazily, leans with the wind, and fades in/out on a
-      // sine envelope that peaks around a gentle 0.13 alpha.
-      breathAcc += dt * (5 + petalMeshes.length * 0.8) * (1 + gustFx * 6);
-      while (breathAcc >= 1) {
-        breathAcc -= 1;
-        const p = breath[breathCursor];
-        breathCursor = (breathCursor + 1) % BREATH_N;
-        const t = trailHistory[Math.min(trailHistory.length - 1, Math.floor(Math.random() * 3))]
-          || { x: petalPos.x, y: petalPos.y, z: petalPos.z };
-        p.life = 0;
-        p.max = 2.6 + Math.random() * 1.2;
-        p.x = t.x + (Math.random() - 0.5) * 0.7;
-        p.y = t.y + (Math.random() - 0.5) * 0.5 + 0.15;
-        p.z = t.z + (Math.random() - 0.5) * 0.7;
-        p.vx = windBias * 0.45 + (Math.random() - 0.5) * 0.14;
-        p.vy = 0.16 + Math.random() * 0.12;
-        p.vz = (Math.random() - 0.5) * 0.1;
-        p.s0 = (0.32 + Math.random() * 0.22) * (1 + gustFx * 0.6);
+// Distant mountains + lakes ride with the camera, like the clouds —
+// a horizon backdrop, not ground the petal flies over.
+if (envMountains) envMountains.position.set(camera.position.x, 0, camera.position.z);
+if (envLakes) envLakes.position.set(camera.position.x, 0, camera.position.z);
+
+// Breath trail: emit soft drifts along the petal's recent path. The
+// breath deepens as the basket fills — a fuller day breathes harder.
+// Each puff rises lazily, leans with the wind, and fades in/out on a
+// sine envelope that peaks around a gentle 0.13 alpha.
+breathAcc += dt * (5 + petalMeshes.length * 0.8) * (1 + gustFx * 6);
+while (breathAcc >= 1) {
+  breathAcc -= 1;
+  const p = breath[breathCursor];
+  breathCursor = (breathCursor + 1) % BREATH_N;
+  const t = trailHistory[Math.min(trailHistory.length - 1, Math.floor(Math.random() * 3))]
+    || { x: petalPos.x, y: petalPos.y, z: petalPos.z };
+  p.life = 0;
+  p.max = 2.6 + Math.random() * 1.2;
+  p.x = t.x + (Math.random() - 0.5) * 0.7;
+  p.y = t.y + (Math.random() - 0.5) * 0.5 + 0.15;
+  p.z = t.z + (Math.random() - 0.5) * 0.7;
+  p.vx = windBias * 0.45 + (Math.random() - 0.5) * 0.14;
+  p.vy = 0.16 + Math.random() * 0.12;
+  p.vz = (Math.random() - 0.5) * 0.1;
+  p.s0 = (0.32 + Math.random() * 0.22) * (1 + gustFx * 0.6);
       }
       for (let i = 0; i < BREATH_N; i++) {
         const p = breath[i];
