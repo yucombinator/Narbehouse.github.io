@@ -1390,21 +1390,18 @@ let frameFps = 0;        // rolling average of rendered frames/sec (diagnostics)
 let frameAcc = 0, frameN = 0, frameLast = performance.now();
 
 function loop() {
-  // Lightweight fps meter: average of the last ~30 rAF deltas.
+  // FPS meters run EVERY frame (not only while the debug HUD is visible),
+  // so toggling the backtick HUD shows the true frame rate immediately —
+  // an EMA that only updates on-screen starts biased at its 60fps seed.
   const now = performance.now();
   frameAcc += now - frameLast;
   frameLast = now;
   frameN++;
   if (frameN >= 30) { frameFps = 1000 / (frameAcc / frameN); frameN = 0; frameAcc = 0; }
+  const gap = now - lastFrameT;
+  lastFrameT = now;
+  fpsSmooth += (1000 / Math.max(1, gap) - fpsSmooth) * 0.08; // EMA, ~12-frame lag
   const dt = Math.min(clock.getDelta(), 1 / 20);
-  // Debug HUD: smooth FPS from real frame intervals (dt is clamped to 1/20).
-  if (debugOn) {
-    const now = performance.now();
-    const gap = now - lastFrameT;
-    lastFrameT = now;
-    const inst = 1000 / Math.max(1, gap);
-    fpsSmooth += (inst - fpsSmooth) * 0.08; // EMA, ~12-frame lag
-  }
   const wind = windAt(clock.elapsedTime, meadowSeed);
   // The world holds its breath while Ben chooses a flower, watches the
   // ceremony, or pauses; ambient petals keep swaying gently in the background.
