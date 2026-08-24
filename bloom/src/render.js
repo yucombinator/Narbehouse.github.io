@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FLOWER_VARIANTS } from './trail.js?v=7';
+import { FLOWER_VARIANTS } from './trail.js?v=8';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
 import { createGrass } from './grass.js?v=12';
@@ -528,7 +528,12 @@ function buildFlowerGeometry({ shape = 'daisy', petalRadius = 0.5, centerRadius 
     }
   }
   parts.push(buildFlowerCenter(centerRadius));
-  return mergeGeometries(parts);
+  const merged = mergeGeometries(parts);
+  // Flowers face the sky: the petal crown was built pointing +z (toward the
+  // old viewer) — tilt the whole crown up so blooms stand upright in the
+  // meadow and catch the sun, like real flowers.
+  merged.rotateX(-Math.PI / 2);
+  return merged;
 }
 
 const KIND_GEOMETRIES = FLOWER_VARIANTS.map((k) =>
@@ -1531,7 +1536,7 @@ export function initRender(canvas) {
               const sc = (1 - kt) * KIND_SCALE[kind] * (b.scale ?? 1);
               dummy.position.set(b.x, crownY, b.z);
               dummy.scale.setScalar(sc);
-              dummy.rotation.set(b.faceTilt ?? 0, b.faceYaw ?? 0, 0);
+              dummy.rotation.set(b.faceTiltX ?? 0, b.faceYaw ?? 0, b.faceTiltZ ?? 0);
               if (stemMesh) {
                 stemDummy.position.set(b.x, ground, b.z);
                 stemDummy.rotation.set(0, 0, 0);
@@ -1555,12 +1560,12 @@ export function initRender(canvas) {
             const sc = (0.95 + 0.05 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
             dummy.position.set(b.x, crownY - (1 - open) * 0.18, b.z);
             dummy.scale.setScalar(sc * KIND_SCALE[kind] * (b.scale ?? 1));
-            // Each plant keeps its own facing (toward the sun) plus a gentle
-            // breeze sway — crowns never lock onto the camera.
+            // Each plant keeps its own gentle nod and a compass spin (petals rotate
+            // around the vertical); crowns face the sky, never the camera.
             dummy.rotation.set(
-              (b.faceTilt ?? 0) + Math.sin(timeSec * 0.9 + i) * 0.06 * open,
+              (b.faceTiltX ?? 0) + Math.sin(timeSec * 0.9 + i) * 0.06 * open,
               b.faceYaw ?? 0,
-              Math.sin(timeSec * 0.6 + i * 1.7) * 0.12 * open
+              (b.faceTiltZ ?? 0) + Math.sin(timeSec * 0.6 + i * 1.7) * 0.12 * open
             );
             if (stemMesh) {
               stemDummy.position.set(b.x, ground, b.z);
@@ -1594,7 +1599,7 @@ export function initRender(canvas) {
       if (mother.visible) {
         const m = 1 + Math.sin(timeSec * 1.8) * 0.08;
         mother.scale.setScalar(m);
-        mother.rotation.z += dt * 0.4;
+        mother.rotation.y += dt * 0.4; // spin petals around the upright crown
         mother.position.set(
           mother.userData.wx,
           HILLS.height(mother.userData.wx, mother.userData.wz) + 3.4,

@@ -120,10 +120,12 @@ export function generateTrail({ seed, length = 400, species = null }) {
         colorHex: sp ? sp.petalHex : PALETTE[Math.floor(rand() * PALETTE.length)],
         speciesId: sp ? sp.id : null,
         scale: sp ? speciesScale(sp.id) : 1,
-        // Flowers face the sun, not the player: a per-plant yaw + nod so the
-        // meadow reads as a field of varied blooms, never a wall of petals.
+        // Flowers face the sky: a small nod in each axis (never tipping below the
+        // horizon) and a compass spin, so the meadow reads as upright blooms
+        // catching the sun — not a field of petals aimed at the player.
         faceYaw: rand() * Math.PI * 2,
-        faceTilt: (rand() - 0.5) * 0.45,
+        faceTiltX: (rand() - 0.5) * 0.7,
+        faceTiltZ: (rand() - 0.5) * 0.7,
         kind,
         kindIndex: 0, // filled below by the per-kind counter
         cluster,
