@@ -18,13 +18,14 @@ export function buildGrassClumpGeometry() {
     { ox: -0.05, oz:  0.06, angle: -1.20, lean: 0.23, height: 0.95, width: 0.056 },
   ];
 
-  // 6 height levels along the blade spine (5 segments for silky-smooth curvature)
+  // 4 height levels along the blade spine (3 segments). One fewer segment
+  // than before: at blade scale (a few px wide) the curvature reads the same,
+  // but it cuts vertex count ~40% (11 -> 7 verts per blade) — a big win for
+  // the 38.5k-clump instanced draw on weaker GPUs.
   const levels = [
     { t: 0.00, w: 1.00 },
-    { t: 0.20, w: 0.92 },
-    { t: 0.45, w: 0.78 },
-    { t: 0.70, w: 0.55 },
-    { t: 0.90, w: 0.30 },
+    { t: 0.35, w: 0.80 },
+    { t: 0.70, w: 0.45 },
     { t: 1.00, w: 0.00 },
   ];
 
@@ -33,8 +34,8 @@ export function buildGrassClumpGeometry() {
   for (const b of bladeConfigs) {
     const halfW = b.width * 0.5;
 
-    // 5 quad segments (10 vertices: 2 per level)
-    for (let li = 0; li < 5; li++) {
+    // 3 quad segments (6 vertices: 2 per level)
+    for (let li = 0; li < 3; li++) {
       const lv = levels[li];
       const w = halfW * lv.w;
 
@@ -52,14 +53,14 @@ export function buildGrassClumpGeometry() {
     }
 
     // Tip vertex (u = 0.5, t = 1.0)
-    const tip = levels[5];
+    const tip = levels[3];
     positions.push(b.ox, tip.t, b.oz);
     uvs.push(0.5, tip.t);
     normals.push(0.0, 1.0, 0.0);
     bladeAttrs.push(b.angle, b.lean, b.height, 0.0);
 
-    // Indices for 5 segments (4 quad pairs = 8 tris + 1 tip tri = 9 tris)
-    for (let li = 0; li < 4; li++) {
+    // Indices for 3 segments (2 quad pairs = 4 tris + 1 tip tri = 5 tris)
+    for (let li = 0; li < 2; li++) {
       const i0 = vertOffset + li * 2;
       const i1 = i0 + 1;
       const i2 = i0 + 2;
@@ -71,10 +72,10 @@ export function buildGrassClumpGeometry() {
     }
     // Tip triangle:
     indices.push(
-      vertOffset + 8, vertOffset + 9, vertOffset + 10
+      vertOffset + 4, vertOffset + 5, vertOffset + 6
     );
 
-    vertOffset += 11;
+    vertOffset += 7;
   }
 
   const geo = new THREE.BufferGeometry();
