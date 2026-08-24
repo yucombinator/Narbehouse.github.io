@@ -92,7 +92,14 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   const TIER1_COUNT = 18000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
   const TIER2_COUNT = 20000; // Mid domain (180m x 180m) - lush rolling meadows (~1.0m spacing)
   const TIER3_COUNT = 4500;  // Far ring (260m box, outer 70-130m) - sparse, fogged, hides the domain edge
-  const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 42,500 clumps
+// Tier 4 (Sky Reach): a very sparse outer band (130-300m) in a fixed 600m
+// domain, DRAWN ONLY when the petal is high (instanceCount grows with
+// altitude). Fixed domain => the wrap never re-tiles, so the field stays
+// put while floating/jumping; at cruise these instances are simply not
+// drawn, so there is zero extra cost on the ground.
+const TIER4_COUNT = 6500;
+const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 42,500 always-drawn
+const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 49,000 with sky-reach
 
   const bladeBaseGeo = buildGrassClumpGeometry();
   const grassGeo = new THREE.InstancedBufferGeometry();
@@ -102,13 +109,13 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   grassGeo.setAttribute('aBlade', bladeBaseGeo.getAttribute('aBlade'));
   grassGeo.setIndex(bladeBaseGeo.getIndex());
 
-  const grassOffsets = new Float32Array(GRASS_COUNT * 2);
-  const grassScales = new Float32Array(GRASS_COUNT * 2);
-  const grassRotations = new Float32Array(GRASS_COUNT);
-  const grassVariations = new Float32Array(GRASS_COUNT * 3);
-  const grassPhases = new Float32Array(GRASS_COUNT);
-  const grassTypes = new Float32Array(GRASS_COUNT);
-  const grassDomains = new Float32Array(GRASS_COUNT);
+  const grassOffsets = new Float32Array(GRASS_COUNT_ALL * 2);
+  const grassScales = new Float32Array(GRASS_COUNT_ALL * 2);
+  const grassRotations = new Float32Array(GRASS_COUNT_ALL);
+  const grassVariations = new Float32Array(GRASS_COUNT_ALL * 3);
+  const grassPhases = new Float32Array(GRASS_COUNT_ALL);
+  const grassTypes = new Float32Array(GRASS_COUNT_ALL);
+  const grassDomains = new Float32Array(GRASS_COUNT_ALL);
 
   const gRand = mulberry32(1337);
   let gIdx = 0;
@@ -192,6 +199,21 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
     }
   }
 
+  // 4. Tier 4 (Sky Reach): outer 130-300m band in a fixed 600m domain.
+  // Over-sampled, inner disc rejected. Draws only at altitude (instanceCount).
+  const t4End = GRASS_COUNT_ALL;
+  const t4Grid = Math.ceil(Math.sqrt(TIER4_COUNT * 5));
+  const t4Cell = 600.0 / t4Grid;
+  for (let gx = 0; gx < t4Grid && gIdx < t4End; gx++) {
+    for (let gz = 0; gz < t4Grid && gIdx < t4End; gz++) {
+      const ox = -300.0 + (gx + gRand() * 0.92 + 0.04) * t4Cell;
+      const oz = -300.0 + (gz + gRand() * 0.92 + 0.04) * t4Cell;
+      if (Math.hypot(ox, oz) < 130.0) continue; // tiers 1-3 cover the inner field
+      populateClump(gIdx, ox, oz, 600.0, 1.1);
+      gIdx++;
+    }
+  }
+
   grassGeo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(grassOffsets, 2));
   grassGeo.setAttribute('aScale', new THREE.InstancedBufferAttribute(grassScales, 2));
   grassGeo.setAttribute('aRotation', new THREE.InstancedBufferAttribute(grassRotations, 1));
@@ -217,7 +239,7 @@ function hillHeight(x, z) {
   );
 }
 
-const grassHillY = new Float32Array(GRASS_COUNT);
+const grassHillY = new Float32Array(GRASS_COUNT_ALL);
   const hillAttr = new THREE.InstancedBufferAttribute(grassHillY, 1);
   hillAttr.setUsage(THREE.DynamicDrawUsage);
   grassGeo.setAttribute('aHillY', hillAttr);
@@ -241,7 +263,6 @@ const grassHillY = new Float32Array(GRASS_COUNT);
       uTrailCount: { value: TRAIL_MAX },
       uWindDir: { value: new THREE.Vector2(0, -1) },
       uWindStrength: { value: 1.0 },
-      uDomainScale: { value: 1.0 }, // 1 at cruise height, grows with altitude
 
       uSunDir: { value: new THREE.Vector3(40, 70, 25).normalize() },
       uHillsParams1: { value: new THREE.Vector4(hp.a1, hp.f1x, hp.p1x, hp.f1z) },
@@ -265,7 +286,6 @@ const grassHillY = new Float32Array(GRASS_COUNT);
       uniform int uTrailCount;
       uniform vec2 uWindDir;
       uniform float uWindStrength;
-      uniform float uDomainScale;
       uniform vec3 uSunDir;
       uniform vec4 uHillsParams1;
       uniform vec4 uHillsParams2;
@@ -296,14 +316,14 @@ const grassHillY = new Float32Array(GRASS_COUNT);
         vVariation = aVariation;
         vType = aType;
 
-        // Tier classification ALWAYS uses the unscaled base domain — the
-        // 80 m boundary separates Tier 1 (60 m) from Tier 2/3 (180/260 m).
-        // Only the wrap geometry uses the altitude-scaled L, so jumping
-        // extends reach without reclassifying near grass as mid grass
-        // (which would flip the center bias and shatter the field).
-        float L = aDomain * uDomainScale;
+        // The wrap domain is FIXED per tier (60/180/260/600 m) and never
+        // scales with altitude: scaling L re-tiles every clump, which makes
+        // the whole field visibly slide while floating. Tier classification
+        // uses the base domain; altitude reach is added by Tier 4's extra
+        // instances (drawn only when high), not by resizing existing tiers.
+        float L = aDomain;
         float halfL = L * 0.5;
-        float isTier2 = step(80.0, aDomain); // 0 for Tier 1, 1 for Tier 2/3
+        float isTier2 = step(80.0, aDomain); // 0 for Tier 1, 1 for Tier 2+
 
         // 2-tier cascaded domain centers:
         // Tier 1: tight around player (-4m)
@@ -635,35 +655,33 @@ const grassHillY = new Float32Array(GRASS_COUNT);
     grassMat.uniforms.uWindDir.value.set(0.0, -1.0);
     grassMat.uniforms.uWindStrength.value = 1.0;
 
-    // Altitude-aware detail distance: when the petal rides a gust up into
-    // the sky, the camera sees much further, so the grass domains and fog
-    // extend to match. At cruise height (3.6 m) the scale is 1x — the full
-    // dense near field stays exactly as designed; high up it spreads the
-    // same clump count over a wider wrap so the meadow reaches the new
-    // horizon instead of ending in a bald ring.
+    // Altitude-aware detail distance WITHOUT touching the wrap domains:
+    // the extra Tier-4 clumps (fixed 600 m domain) are drawn only when the
+    // petal is above cruise height, via instanceCount. Domains never scale,
+    // so the existing field cannot slide or re-tile while floating/jumping.
     const alt = Math.max(0, petalPos.y - hillHeight(petalPos.x, petalPos.z));
-    // Only extend detail distance above cruise altitude (3.6 m): at cruise
-    // the scale is exactly 1 (unchanged near field); rising ~8 m doubles the
-    // reach, capped at 3.5x.
     const altAboveCruise = Math.max(0, alt - 3.6);
-    const domainScale = Math.min(3.5, 1 + altAboveCruise * 0.13);
-    grassMat.uniforms.uDomainScale.value = domainScale;
+    const skyReach = Math.min(1, altAboveCruise / 18); // full reach ~21.6m up
+    const drawCount = GRASS_COUNT + Math.round(TIER4_COUNT * skyReach);
+    grassGeo.instanceCount = drawCount;
+
     // Match the renderer's fog extension so grass haze tracks the terrain.
     if (grassMat.uniforms.fogFar) {
       const baseNear = 90, baseFar = 320;
-      grassMat.uniforms.fogNear.value = Math.min(baseFar - 10, baseNear * (1 + (domainScale - 1) * 0.25));
-      grassMat.uniforms.fogFar.value = baseFar * domainScale;
+      const fogScale = 1 + skyReach * 2.5; // 1x cruise .. 3.5x at full reach
+      grassMat.uniforms.fogNear.value = Math.min(baseFar - 10, baseNear * (1 + (fogScale - 1) * 0.25));
+      grassMat.uniforms.fogFar.value = baseFar * fogScale;
     }
 
-    // Precompute the terrain height for every clump on the CPU (one pass,
-    // 38.5k clumps) instead of recomputing 4 trig ops per vertex on the GPU
-    // (55 verts x 38.5k clumps per frame). The wrapped world position mirrors
-    // the vertex shader's domain-wrap so the heights stay in sync.
+    // Precompute the terrain height for every clump on the CPU (one pass)
+    // instead of recomputing 4 trig ops per vertex on the GPU. The wrapped
+    // world position mirrors the vertex shader's domain-wrap so the heights
+    // stay in sync. Fixed domains => the wrap is stable at any altitude.
     {
       const px = petalPos.x, pz = petalPos.z;
-      for (let i = 0; i < GRASS_COUNT; i++) {
+      for (let i = 0; i < GRASS_COUNT_ALL; i++) {
         const baseDomain = grassDomains[i];
-        const L = baseDomain * domainScale;
+        const L = baseDomain;
         const halfL = L * 0.5;
         const zBias = baseDomain > 80.0 ? 25.0 : 4.0; // tier by BASE domain
         const cx = px, cz = pz - zBias;
