@@ -296,13 +296,19 @@ const grassHillY = new Float32Array(GRASS_COUNT);
         vVariation = aVariation;
         vType = aType;
 
+        // Tier classification ALWAYS uses the unscaled base domain — the
+        // 80 m boundary separates Tier 1 (60 m) from Tier 2/3 (180/260 m).
+        // Only the wrap geometry uses the altitude-scaled L, so jumping
+        // extends reach without reclassifying near grass as mid grass
+        // (which would flip the center bias and shatter the field).
         float L = aDomain * uDomainScale;
         float halfL = L * 0.5;
+        float isTier2 = step(80.0, aDomain); // 0 for Tier 1, 1 for Tier 2/3
 
         // 2-tier cascaded domain centers:
-        // Tier 1 (L <= 80): tight around player (-4m)
-        // Tier 2 (L > 80): forward mid-field bias (-25m)
-        float zBias = L > 80.0 ? 25.0 : 4.0;
+        // Tier 1: tight around player (-4m)
+        // Tier 2: forward mid-field bias (-25m)
+        float zBias = mix(4.0, 25.0, isTier2);
         vec2 center = vec2(uPetalPos.x, uPetalPos.z - zBias);
 
         float wx = center.x + mod(aOffset.x - center.x + halfL, L) - halfL;
@@ -317,7 +323,7 @@ const grassHillY = new Float32Array(GRASS_COUNT);
         float edgeFade = 1.0;
         {
           float halfL = L * 0.5;
-          float fadeW = L <= 80.0 ? 9.0 : halfL * 0.18;
+          float fadeW = mix(9.0, halfL * 0.18, isTier2);
           edgeFade = clamp((halfL - distFromCenter) / fadeW, 0.0, 1.0);
         }
         vEdgeFade = edgeFade;
@@ -656,9 +662,10 @@ const grassHillY = new Float32Array(GRASS_COUNT);
     {
       const px = petalPos.x, pz = petalPos.z;
       for (let i = 0; i < GRASS_COUNT; i++) {
-        const L = grassDomains[i] * domainScale;
+        const baseDomain = grassDomains[i];
+        const L = baseDomain * domainScale;
         const halfL = L * 0.5;
-        const zBias = L > 80.0 ? 25.0 : 4.0;
+        const zBias = baseDomain > 80.0 ? 25.0 : 4.0; // tier by BASE domain
         const cx = px, cz = pz - zBias;
         const wx = cx + mod2(grassOffsets[i * 2] - cx + halfL, L) - halfL;
         const wz = cz + mod2(grassOffsets[i * 2 + 1] - cz + halfL, L) - halfL;
