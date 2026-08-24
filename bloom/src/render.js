@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_VARIANTS } from './trail.js?v=8';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=19';
+import { createGrass } from './grass.js?v=20';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -1079,10 +1079,11 @@ function buildLakes(cfg = {}) {
 export function initRender(canvas) {
   // preserveDrawingBuffer stays off: keeping it forced a full framebuffer
   // copy-back every frame — one of the heaviest avoidable costs.
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  // Cap internal resolution modestly: at 2x device pixel ratio this saves
-  // ~30% of fragment work (the biggest single FPS lever in the game).
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+  // antialias off + 1.0 pixel ratio: on a Retina Mac this is roughly a 4x
+  // cut in fragment+MSAA work, which is the difference between choppy and
+  // smooth. The low-poly, foggy, soft-glow art hides it well.
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
   // Shadows follow a smoothly-moving sun; refreshing the map at ~20Hz is
   // imperceptible and saves a full caster pass on the other frames.
   renderer.shadowMap.autoUpdate = false;
@@ -1498,10 +1499,11 @@ export function initRender(canvas) {
   const rim = new THREE.DirectionalLight(0xbfe4ff, 0.55);
   rim.position.set(-45, 20, -30);
   scene.add(ambient, sun, rim);
-  ground.receiveShadow = true; // hills catch shade from flowers/petals
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  petal.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  // Shadows off entirely: the shadow pass re-renders every flower/stem
+  // caster each refresh, which is a heavy cost on Mac integrated GPUs, and
+  // in a bright, foggy meadow the per-flower shadow is barely visible. The
+  // sun/hemisphere shading already gives every blade and petal its form.
+  renderer.shadowMap.enabled = false;
 
   // --- Meadow theming: the hike's light --------------------------------
   let themeIndex = 0;

@@ -11,11 +11,10 @@ export function buildGrassClumpGeometry() {
   // 5-blade natural bouquet: each blade has distinct origin offset, fanning angle,
   // botanical resting lean, height, and width.
   const bladeConfigs = [
-    { ox:  0.00, oz:  0.00, angle:  0.00, lean: 0.24, height: 1.00, width: 0.060 },
-    { ox:  0.07, oz:  0.05, angle:  1.20, lean: 0.22, height: 0.92, width: 0.054 },
-    { ox:  0.04, oz: -0.07, angle:  2.45, lean: 0.20, height: 0.86, width: 0.050 },
-    { ox: -0.07, oz: -0.05, angle: -2.45, lean: 0.21, height: 0.88, width: 0.052 },
-    { ox: -0.05, oz:  0.06, angle: -1.20, lean: 0.23, height: 0.95, width: 0.056 },
+    { ox:  0.00, oz:  0.00, angle:  0.00, lean: 0.24, height: 1.00, width: 0.062 },
+    { ox:  0.08, oz:  0.05, angle:  1.25, lean: 0.22, height: 0.92, width: 0.056 },
+    { ox: -0.08, oz: -0.05, angle: -1.25, lean: 0.21, height: 0.90, width: 0.054 },
+    { ox:  0.00, oz: -0.08, angle:  2.9,  lean: 0.20, height: 0.84, width: 0.050 },
   ];
 
   // 4 height levels along the blade spine (3 segments). One fewer segment
@@ -89,9 +88,9 @@ export function buildGrassClumpGeometry() {
 
 export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   const hp = hillsParams;
-  const TIER1_COUNT = 18000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
-  const TIER2_COUNT = 17000; // Mid domain (180m x 180m) - lush rolling meadows (~1.0m spacing)
-  const TIER3_COUNT = 1800;  // Far ring (260m box, outer 70-130m) - sparse, fogged, hides the domain edge
+  const TIER1_COUNT = 15000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
+  const TIER2_COUNT = 14000; // Mid domain (180m x 180m) - lush rolling meadows (~1.0m spacing)
+  const TIER3_COUNT = 1200;  // Far ring (260m box, outer 70-130m) - sparse, fogged, hides the domain edge
 // Tier 4 (Sky Reach): a very sparse outer band (130-300m) in a fixed 600m
 // domain, DRAWN ONLY when the petal is high (instanceCount grows with
 // altitude). Fixed domain => the wrap never re-tiles, so the field stays
