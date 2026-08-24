@@ -241,6 +241,8 @@ const grassHillY = new Float32Array(GRASS_COUNT);
       uTrailCount: { value: TRAIL_MAX },
       uWindDir: { value: new THREE.Vector2(0, -1) },
       uWindStrength: { value: 1.0 },
+      uDomainScale: { value: 1.0 }, // 1 at cruise height, grows with altitude
+
       uSunDir: { value: new THREE.Vector3(40, 70, 25).normalize() },
       uHillsParams1: { value: new THREE.Vector4(hp.a1, hp.f1x, hp.p1x, hp.f1z) },
       uHillsParams2: { value: new THREE.Vector4(hp.p1z, hp.b1, hp.f2x, hp.p2x) },
@@ -263,6 +265,7 @@ const grassHillY = new Float32Array(GRASS_COUNT);
       uniform int uTrailCount;
       uniform vec2 uWindDir;
       uniform float uWindStrength;
+      uniform float uDomainScale;
       uniform vec3 uSunDir;
       uniform vec4 uHillsParams1;
       uniform vec4 uHillsParams2;
@@ -293,7 +296,7 @@ const grassHillY = new Float32Array(GRASS_COUNT);
         vVariation = aVariation;
         vType = aType;
 
-        float L = aDomain;
+        float L = aDomain * uDomainScale;
         float halfL = L * 0.5;
 
         // 2-tier cascaded domain centers:
@@ -626,6 +629,26 @@ const grassHillY = new Float32Array(GRASS_COUNT);
     grassMat.uniforms.uWindDir.value.set(0.0, -1.0);
     grassMat.uniforms.uWindStrength.value = 1.0;
 
+    // Altitude-aware detail distance: when the petal rides a gust up into
+    // the sky, the camera sees much further, so the grass domains and fog
+    // extend to match. At cruise height (3.6 m) the scale is 1x — the full
+    // dense near field stays exactly as designed; high up it spreads the
+    // same clump count over a wider wrap so the meadow reaches the new
+    // horizon instead of ending in a bald ring.
+    const alt = Math.max(0, petalPos.y - hillHeight(petalPos.x, petalPos.z));
+    // Only extend detail distance above cruise altitude (3.6 m): at cruise
+    // the scale is exactly 1 (unchanged near field); rising ~8 m doubles the
+    // reach, capped at 3.5x.
+    const altAboveCruise = Math.max(0, alt - 3.6);
+    const domainScale = Math.min(3.5, 1 + altAboveCruise * 0.13);
+    grassMat.uniforms.uDomainScale.value = domainScale;
+    // Match the renderer's fog extension so grass haze tracks the terrain.
+    if (grassMat.uniforms.fogFar) {
+      const baseNear = 90, baseFar = 320;
+      grassMat.uniforms.fogNear.value = Math.min(baseFar - 10, baseNear * (1 + (domainScale - 1) * 0.25));
+      grassMat.uniforms.fogFar.value = baseFar * domainScale;
+    }
+
     // Precompute the terrain height for every clump on the CPU (one pass,
     // 38.5k clumps) instead of recomputing 4 trig ops per vertex on the GPU
     // (55 verts x 38.5k clumps per frame). The wrapped world position mirrors
@@ -633,7 +656,7 @@ const grassHillY = new Float32Array(GRASS_COUNT);
     {
       const px = petalPos.x, pz = petalPos.z;
       for (let i = 0; i < GRASS_COUNT; i++) {
-        const L = grassDomains[i];
+        const L = grassDomains[i] * domainScale;
         const halfL = L * 0.5;
         const zBias = L > 80.0 ? 25.0 : 4.0;
         const cx = px, cz = pz - zBias;

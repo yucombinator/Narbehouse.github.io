@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=27';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=28';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=8';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';

@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_VARIANTS } from './trail.js?v=8';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=14';
+import { createGrass } from './grass.js?v=15';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -1504,34 +1504,35 @@ export function initRender(canvas) {
   // --- Meadow theming: the hike's light --------------------------------
   let themeIndex = 0;
   let clouds = []; // built later; applyTheme re-skins them per stage
-  // Distant environment (backported from Frolic): a low-poly mountain range
-  // plus occasional lakes. Rebuilt per meadow from the theme's env profile —
-  // foothills at the trailhead, moraine lakes in the valley, soaring rocky
-  // peaks at the summit. Toggle: "Distant mountains & lakes" (petalBloom.env,
-  // default on). Skipped entirely when off — no scene cost.
-  let envMountains = null;
-  let envLakes = null;
-  let envThemeIndex = -1; // which meadow the current env was built for
-  let envOn = true;
-  try { envOn = localStorage.getItem('petalBloom.env') !== '0'; } catch { /* storage unavailable */ }
-  function rebuildEnv(theme) {
-    if (!envOn) return;
-    const ec = theme.env || {};
-    if (envMountains) {
-      scene.remove(envMountains);
-      envMountains.geometry.dispose();
-      envMountains.material.dispose();
-    }
-    envMountains = buildMountainRange(ec.mountains || {});
-    scene.add(envMountains);
-    if (envLakes) {
-      scene.remove(envLakes);
-      envLakes.geometry.dispose();
-      envLakes.material.dispose();
-    }
-    envLakes = buildLakes(ec.lakes || {});
-    if (envLakes) scene.add(envLakes);
+// Distant environment (backported from Frolic): a low-poly mountain range
+// plus occasional lakes. Rebuilt per meadow from the theme's env profile —
+// foothills at the trailhead, moraine lakes in the valley, soaring rocky
+// peaks at the summit. Toggle: "Distant mountains & lakes" (petalBloom.env,
+// default on). Skipped entirely when off — no scene cost.
+let envMountains = null;
+let envLakes = null;
+let envThemeIndex = -1; // which meadow the current env was built for
+let envOn = true;
+try { envOn = localStorage.getItem('petalBloom.env') !== '0'; } catch { /* storage unavailable */ }
+function rebuildEnv(theme) {
+  if (!envOn) return;
+  const ec = theme.env || {};
+  if (envMountains) {
+    scene.remove(envMountains);
+    envMountains.geometry.dispose();
+    envMountains.material.dispose();
   }
+  envMountains = buildMountainRange(ec.mountains || {});
+  scene.add(envMountains);
+  if (envLakes) {
+    scene.remove(envLakes);
+    envLakes.geometry.dispose();
+    envLakes.material.dispose();
+  }
+  envLakes = buildLakes(ec.lakes || {});
+  if (envLakes) scene.add(envLakes);
+}
+let themeFogNear = 75, themeFogFar = 380; // baseline from the current theme
   function applyTheme(i) {
     const theme = MEADOW_THEMES[((i % MEADOW_THEMES.length) + MEADOW_THEMES.length) % MEADOW_THEMES.length];
     themeIndex = MEADOW_THEMES.indexOf(theme);
@@ -1539,6 +1540,8 @@ export function initRender(canvas) {
     scene.fog.color.set(theme.skyBottom);
     scene.fog.near = theme.fogNear;
     scene.fog.far = theme.fogFar;
+    themeFogNear = theme.fogNear;
+    themeFogFar = theme.fogFar;
     // Custom shaders carry their own fog uniforms — sweep the scene once per
     // theme change and sync every material that has them.
     scene.traverse((o) => {
@@ -1868,6 +1871,22 @@ const breathMat = new THREE.ShaderMaterial({
       petal.rotation.x = Math.sin(timeSec * 2) * 0.08;
       // Wind intensity eases toward the steering input.
       windIntensity = Math.min(1, windIntensity + (steerLevel - windIntensity) * Math.min(1, dt * 1.1));
+
+      // Altitude-aware fog: when the petal rides a gust into the sky the
+      // meadow must stay detailed out to the new horizon. Scale the theme's
+      // fog far by the same altitude factor the grass domains use, so ground
+      // detail and haze move together instead of the grass extending into a
+      // fog bank.
+      {
+        const alt = Math.max(0, petalPos.y - HILLS.height(petalPos.x, petalPos.z));
+        const fogScale = Math.min(3.5, 1 + Math.max(0, alt - 3.6) * 0.13);
+        const fNear = Math.min(themeFogFar - 10, themeFogNear * (1 + (fogScale - 1) * 0.25));
+        const fFar = themeFogFar * fogScale;
+        scene.fog.near = fNear;
+        scene.fog.far = fFar;
+        terrainMat.uniforms.fogNear.value = fNear;
+        terrainMat.uniforms.fogFar.value = fFar;
+      }
       // Trail: record the recent path, spaced ~2.5 units apart so slots
       // stretch a real distance behind the player (not every frame collapsed
       // at one point).
