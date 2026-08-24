@@ -198,6 +198,28 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   grassGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(grassPhases, 1));
   grassGeo.setAttribute('aType', new THREE.InstancedBufferAttribute(grassTypes, 1));
   grassGeo.setAttribute('aDomain', new THREE.InstancedBufferAttribute(grassDomains, 1));
+  // Terrain height per clump, recomputed on the CPU each frame. The vertex
+  // shader used to recompute 4 trig ops per vertex (55 verts x 38.5k clumps
+  // per frame); hoisting it to one CPU pass (38.5k clumps) moves the hill
+  // sampling out of the per-vertex GPU path entirely.
+  // JS port of GLSL mod (non-negative result for positive modulus).
+function mod2(a, n) {
+  return ((a % n) + n) % n;
+}
+
+// JS mirror of the shader's getHillHeight (same formula, same params).
+function hillHeight(x, z) {
+  return (
+    hp.offset +
+    hp.a1 * Math.sin(x * hp.f1x + hp.p1x) * Math.sin(z * hp.f1z + hp.p1z) +
+    hp.b1 * Math.sin(x * hp.f2x + hp.p2x) * Math.sin(z * hp.f2z + hp.p2z)
+  );
+}
+
+const grassHillY = new Float32Array(GRASS_COUNT);
+  const hillAttr = new THREE.InstancedBufferAttribute(grassHillY, 1);
+  hillAttr.setUsage(THREE.DynamicDrawUsage);
+  grassGeo.setAttribute('aHillY', hillAttr);
 
   const TRAIL_MAX = 32;
   const trailArray = [];
@@ -252,6 +274,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       attribute float aPhase;
       attribute float aType;
       attribute float aDomain;
+      attribute float aHillY; // terrain height per clump (CPU-computed)
       attribute vec4 aBlade; // x = angle, y = lean, z = height, w = halfWidth
 
       varying vec2 vUv;
@@ -263,26 +286,6 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
       varying float vType;
       varying float vEdgeFade;
       varying float vHalo;
-
-      float getHillHeight(float x, float z) {
-        float a1 = uHillsParams1.x;
-        float f1x = uHillsParams1.y;
-        float p1x = uHillsParams1.z;
-        float f1z = uHillsParams1.w;
-        
-        float p1z = uHillsParams2.x;
-        float b1 = uHillsParams2.y;
-        float f2x = uHillsParams2.z;
-        float p2x = uHillsParams2.w;
-        
-        float f2z = uHillsParams3.x;
-        float p2z = uHillsParams3.y;
-        float hillOffset = uHillsParams3.z;
-        
-        return hillOffset + 
-          a1 * sin(x * f1x + p1x) * sin(z * f1z + p1z) + 
-          b1 * sin(x * f2x + p2x) * sin(z * f2z + p2z);
-      }
 
       void main() {
         vUv = uv;
@@ -300,7 +303,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
 
         float wx = center.x + mod(aOffset.x - center.x + halfL, L) - halfL;
         float wz = center.y + mod(aOffset.y - center.y + halfL, L) - halfL;
-        float wy = getHillHeight(wx, wz);
+        float wy = aHillY; // terrain height precomputed per clump on the CPU
 
         // Smooth edge fade towards the domain boundary (domain-relative so
         // each tier dissolves at its own edge). Tier 1 also fades across its
@@ -621,6 +624,24 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
     if (petalColor) grassMat.uniforms.uPetalColor.value.set(petalColor.r, petalColor.g, petalColor.b);
     grassMat.uniforms.uWindDir.value.set(0.0, -1.0);
     grassMat.uniforms.uWindStrength.value = 1.0;
+
+    // Precompute the terrain height for every clump on the CPU (one pass,
+    // 38.5k clumps) instead of recomputing 4 trig ops per vertex on the GPU
+    // (55 verts x 38.5k clumps per frame). The wrapped world position mirrors
+    // the vertex shader's domain-wrap so the heights stay in sync.
+    {
+      const px = petalPos.x, pz = petalPos.z;
+      for (let i = 0; i < GRASS_COUNT; i++) {
+        const L = grassDomains[i];
+        const halfL = L * 0.5;
+        const zBias = L > 80.0 ? 25.0 : 4.0;
+        const cx = px, cz = pz - zBias;
+        const wx = cx + mod2(grassOffsets[i * 2] - cx + halfL, L) - halfL;
+        const wz = cz + mod2(grassOffsets[i * 2 + 1] - cz + halfL, L) - halfL;
+        grassHillY[i] = hillHeight(wx, wz);
+      }
+      hillAttr.needsUpdate = true;
+    }
   }
 
   	function dispose() {
