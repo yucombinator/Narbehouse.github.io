@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_VARIANTS } from './trail.js?v=8';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=12';
+import { createGrass } from './grass.js?v=13';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -14,27 +14,45 @@ export const SKY_BOTTOM = 0xc8e6ff;
 export const MEADOW_THEMES = [
   {
     name: 'Ranger Station', line: 'Dawn. The ranger station wakes by the trailhead.',
-    skyTop: 0x7fa3d4, skyBottom: 0xffeadb, fogNear: 72, fogFar: 340,
+    skyTop: 0x4f86d6, skyBottom: 0xffeadb, fogNear: 72, fogFar: 340,
     sunColor: 0xffe2ba, sunIntensity: 1.3,
     hemiSky: 0xf2e4d2, hemiGround: 0x7a9e5a, tint: [1.05, 1.0, 0.96],
     // Dawn: low, small, distant clouds hugging the horizon, warmed by the
     // sunrise — no tall cumulus overhead before the day has properly begun.
     cloud: { count: 5, yBand: [12, 30], zoBand: [-270, -150], scale: [1.2, 1.8], tint: 0xffe6cc, opacity: 0.9, flat: 0.8 },
+    // At the trailhead you are at the BASE of the range: low distant foothills,
+    // no snow, no lakes — the peaks are still a day's hike away.
+    env: {
+      mountains: { heightScale: 0.5, rangeScale: 1.12, snowLine: 999, tint: 1.0 },
+      lakes: { count: 0 },
+    },
   },
   {
     name: 'Valley Meadow', line: 'Mid-morning. The valley opens.',
-    skyTop: SKY_TOP, skyBottom: SKY_BOTTOM, fogNear: 75, fogFar: 380,
+    skyTop: 0x2f6fd8, skyBottom: SKY_BOTTOM, fogNear: 75, fogFar: 380,
     sunColor: 0xfff2d8, sunIntensity: 1.4,
     hemiSky: 0xcfe8ff, hemiGround: 0x7a9e4a, tint: [1, 1, 1],
     cloud: { count: 7, yBand: [28, 58], zoBand: [-240, -110], scale: [1.6, 2.4], tint: 0xffffff, opacity: 0.95, flat: 1.0 },
+    // Mid-hike: the range looms closer, snow creeping down the peaks, and the
+    // valley holds glacial moraine lakes — milky turquoise, carved by ice.
+    env: {
+      mountains: { heightScale: 1.0, rangeScale: 1.0, snowLine: 96, tint: 1.0 },
+      lakes: { count: 2, color: 0x4a9d8a, rMin: 130, rMax: 205, sizeMin: 24, sizeMax: 58 },
+    },
   },
   {
     name: 'Summit Ridge', line: 'Afternoon. The summit ridge.',
-    skyTop: 0x3a7fd0, skyBottom: 0xdff0ff, fogNear: 95, fogFar: 430,
+    skyTop: 0x1f5cc8, skyBottom: 0xdff0ff, fogNear: 95, fogFar: 430,
     sunColor: 0xfff7e0, sunIntensity: 1.5,
     hemiSky: 0xe4f2ff, hemiGround: 0x6a8e5e, tint: [0.93, 1.0, 1.03],
     // Summit: the day is mature — fuller, higher, closer clouds.
     cloud: { count: 9, yBand: [48, 90], zoBand: [-190, -80], scale: [2.0, 3.0], tint: 0xfff0e0, opacity: 0.97, flat: 1.0 },
+    // At the summit you are IN the range: towering rocky peaks crowding the
+    // horizon, snow low on the ridges, and a few high cold tarns.
+    env: {
+      mountains: { heightScale: 1.55, rangeScale: 0.9, snowLine: 82, tint: 1.02 },
+      lakes: { count: 1, color: 0x5fa8c8, rMin: 120, rMax: 200, sizeMin: 14, sizeMax: 36 },
+    },
   },
 ];
 
@@ -638,7 +656,12 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
-function buildMountainRange() {
+function buildMountainRange(cfg = {}) {
+  // Per-theme shaping: how big, how close, how snowy the range reads. The
+  // trailhead shows low distant foothills; the summit sits inside towering
+  // peaks. Defaults match the original "mid-hike valley" look.
+  const H = cfg.heightScale ?? 1;   // peak-height multiplier
+  const RS = cfg.rangeScale ?? 1;   // distance multiplier (radius)
   const pos = [];
   const col = [];
   const meta = [];
@@ -706,8 +729,8 @@ function buildMountainRange() {
       // Flat plateau across the chain; only the ends roll off to the plain.
       const taper = clamp(Math.min(t, 1 - t) / 0.16, 0, 1);
       const a = o.a0 + (o.a1 - o.a0) * t;
-      const r = o.r0 + (o.r1 - o.r0) * t + (Math.random() - 0.5) * 3;
-      const h = profile(a, o.peaks, o.seed) * taper;
+      const r = (o.r0 + (o.r1 - o.r0) * t + (Math.random() - 0.5) * 3) * RS;
+      const h = profile(a, o.peaks, o.seed) * taper * H;
       pts.push({ a, r, h });
     }
     // Per-chain base colour (rock or pine). Every vertex of the chain shares
@@ -715,9 +738,10 @@ function buildMountainRange() {
     // from continuous local-space fields, so there is nothing for adjacent
     // quads to step between. This kills the vertical banding the per-vertex
     // snow ramp produced.
+    const snowLine = o.snowLine === 999 ? 999 : (cfg.snowLine ?? o.snowLine);
     const base = o.green ? [0.42, 0.49, 0.34] : [o.rock[0], o.rock[1], o.rock[2]];
     // Metadata for the shader: (snowLine, green, tint). snowLine 999 = no snow.
-    const chainMeta = [o.snowLine, o.green ? 1 : 0, o.tint];
+    const chainMeta = [snowLine, o.green ? 1 : 0, cfg.tint ?? o.tint];
     // Indexed emission: each control point contributes 3 shared vertices
     // (front base, crest, back base). Adjacent quads share vertices, so
     // computeVertexNormals yields SMOOTH normals along the ridge — the sun
@@ -728,7 +752,7 @@ function buildMountainRange() {
       const p = pts[i];
       const sa = Math.sin(p.a), ca = Math.cos(p.a);
       // front base
-      pos.push((p.r - o.front) * sa, o.baseY, -(p.r - o.front) * ca);
+      pos.push((p.r - o.front * RS) * sa, o.baseY, -(p.r - o.front * RS) * ca);
       col.push(base[0], base[1], base[2]);
       meta.push(chainMeta[0], chainMeta[1], chainMeta[2], 0);
       // crest
@@ -736,7 +760,7 @@ function buildMountainRange() {
       col.push(base[0], base[1], base[2]);
       meta.push(chainMeta[0], chainMeta[1], chainMeta[2], 0);
       // back base
-      pos.push((p.r + o.back) * sa, o.baseY - 1, -(p.r + o.back) * ca);
+      pos.push((p.r + o.back * RS) * sa, o.baseY - 1, -(p.r + o.back * RS) * ca);
       col.push(base[0], base[1], base[2]);
       meta.push(chainMeta[0], chainMeta[1], chainMeta[2], 0);
     }
@@ -982,22 +1006,26 @@ function buildMountainRange() {
 // count (0-2), size, and position every session. Depth-tested like normal
 // geometry (a hill in front correctly occludes them), and placed only where
 // the camera-to-lake sight line clears the intervening terrain.
-function buildLakes() {
-  const count = Math.random() < 0.6 ? 1 + Math.floor(Math.random() * 2) : 0;
-  if (!count) return null;
+function buildLakes(cfg = {}) {
+  const want = cfg.count ?? (Math.random() < 0.6 ? 1 + Math.floor(Math.random() * 2) : 0);
+  if (!want) return null;
   const pos = [];
   const col = [];
   const index = [];
   const lakeMat = new THREE.MeshBasicMaterial({
-    color: 0x3f7fb5, transparent: true, opacity: 0.85, fog: false, side: THREE.DoubleSide,
+    color: cfg.color ?? 0x3f7fb5, transparent: true, opacity: 0.85, fog: false, side: THREE.DoubleSide,
   });
+  const rMin = cfg.rMin ?? 140;
+  const rMax = cfg.rMax ?? 210;
+  const sizeMin = cfg.sizeMin ?? 26;
+  const sizeMax = cfg.sizeMax ?? 60;
   const camY = HILLS.height(0, 0) + 6; // camera rides ~6 above local terrain
-  for (let l = 0; l < count; l++) {
+  for (let l = 0; l < want; l++) {
     let cx = 0, cz = 0, ground = -10, lakeW = 30, lakeD = 30, ok = false;
     for (let attempt = 0; attempt < 14 && !ok; attempt++) {
       const side = Math.random() < 0.5 ? -1 : 1;
       const a = side * (0.3 + Math.random() * 0.6);        // 0.3-0.9 rad off center
-      const r = 140 + Math.random() * 70;                  // 140-210 out
+      const r = rMin + Math.random() * (rMax - rMin);      // distance band
       cx = Math.sin(a) * r;
       cz = -Math.cos(a) * r;
       ground = HILLS.height(cx, cz);
@@ -1024,7 +1052,7 @@ function buildLakes() {
       }
     }
     if (!ok) continue;
-    lakeW = 26 + Math.random() * 34;                       // lake width
+    lakeW = sizeMin + Math.random() * (sizeMax - sizeMin);  // lake width
     lakeD = lakeW * (0.5 + Math.random() * 0.7);           // depth (ellipse)
     const seg = 14;
     const v0 = pos.length / 3;
@@ -1476,6 +1504,34 @@ export function initRender(canvas) {
   // --- Meadow theming: the hike's light --------------------------------
   let themeIndex = 0;
   let clouds = []; // built later; applyTheme re-skins them per stage
+  // Distant environment (backported from Frolic): a low-poly mountain range
+  // plus occasional lakes. Rebuilt per meadow from the theme's env profile —
+  // foothills at the trailhead, moraine lakes in the valley, soaring rocky
+  // peaks at the summit. Toggle: "Distant mountains & lakes" (petalBloom.env,
+  // default on). Skipped entirely when off — no scene cost.
+  let envMountains = null;
+  let envLakes = null;
+  let envThemeIndex = -1; // which meadow the current env was built for
+  let envOn = true;
+  try { envOn = localStorage.getItem('petalBloom.env') !== '0'; } catch { /* storage unavailable */ }
+  function rebuildEnv(theme) {
+    if (!envOn) return;
+    const ec = theme.env || {};
+    if (envMountains) {
+      scene.remove(envMountains);
+      envMountains.geometry.dispose();
+      envMountains.material.dispose();
+    }
+    envMountains = buildMountainRange(ec.mountains || {});
+    scene.add(envMountains);
+    if (envLakes) {
+      scene.remove(envLakes);
+      envLakes.geometry.dispose();
+      envLakes.material.dispose();
+    }
+    envLakes = buildLakes(ec.lakes || {});
+    if (envLakes) scene.add(envLakes);
+  }
   function applyTheme(i) {
     const theme = MEADOW_THEMES[((i % MEADOW_THEMES.length) + MEADOW_THEMES.length) % MEADOW_THEMES.length];
     themeIndex = MEADOW_THEMES.indexOf(theme);
@@ -1520,6 +1576,13 @@ export function initRender(canvas) {
           camera.position.z + c.userData.zo
         );
       });
+    }
+    // The horizon grows with the hike: rebuild mountains + lakes only when
+    // the meadow actually changes (not on every beginRun/restart of the same
+    // meadow), so the backdrop is stable while you're in a stage.
+    if (envOn && themeIndex !== envThemeIndex) {
+      rebuildEnv(theme);
+      envThemeIndex = themeIndex;
     }
   }
   applyTheme(0); // the day begins in the garden at dawn
@@ -1673,24 +1736,9 @@ const breathMat = new THREE.ShaderMaterial({
     breath.push({ life: -1, max: 1, x: 0, y: -500, z: 0, vx: 0, vy: 0, vz: 0, s0: 0.4 });
   }
 
-  // Optional distant environment (backported from Frolic): a low-poly
-  // mountain range on the horizon plus occasional lakes in the valleys.
-  // Toggle with the "Distant mountains & lakes" checkbox (petalBloom.env,
-  // default on). Skipped entirely when off — no scene cost.
-  let envMountains = null;
-  let envLakes = null;
-  {
-    let envOn = true;
-    try {
-      envOn = localStorage.getItem('petalBloom.env') !== '0';
-    } catch { /* storage unavailable */ }
-    if (envOn) {
-      envMountains = buildMountainRange();
-      scene.add(envMountains);
-      envLakes = buildLakes();
-      if (envLakes) scene.add(envLakes);
-    }
-  }
+  // (Distant mountains + lakes are built per meadow inside applyTheme above,
+  // using each theme's env profile.)
+
   let breathCursor = 0;
   let breathAcc = 0;
 

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=25';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=26';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=8';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
@@ -860,7 +860,8 @@ function openRest() {
   if (resting) return;
   resting = true;
   closeInterlude();
-  const theme = MEADOW_THEMES[((stageIndex % MEADOW_THEMES.length) + MEADOW_THEMES.length) % MEADOW_THEMES.length];
+  const themeIndex = render?.currentThemeIndex?.() ?? 0;
+  const theme = MEADOW_THEMES[((themeIndex % MEADOW_THEMES.length) + MEADOW_THEMES.length) % MEADOW_THEMES.length];
   restTitleEl.textContent = `Resting at ${theme.name}`;
   const n = basketPicks.length;
   restSubEl.textContent = n === 0

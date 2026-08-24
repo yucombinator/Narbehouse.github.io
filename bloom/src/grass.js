@@ -89,9 +89,9 @@ export function buildGrassClumpGeometry() {
 export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
   const hp = hillsParams;
   const TIER1_COUNT = 18000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
-  const TIER2_COUNT = 16000; // Mid domain (180m x 180m) - denser rolling meadows (~1.1m spacing)
+  const TIER2_COUNT = 20000; // Mid domain (180m x 180m) - lush rolling meadows (~1.0m spacing)
   const TIER3_COUNT = 4500;  // Far ring (260m box, outer 70-130m) - sparse, fogged, hides the domain edge
-  const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 38,500 clumps
+  const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 42,500 clumps
 
   const bladeBaseGeo = buildGrassClumpGeometry();
   const grassGeo = new THREE.InstancedBufferGeometry();
@@ -159,7 +159,9 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
     }
   }
 
-  // 2. Tier 2 (Mid Rolling Field): 16,000 clumps across 180m x 180m box
+  // 2. Tier 2 (Mid Rolling Field): 20,000 clumps across 180m x 180m box,
+  // grown ~30% larger than the near turf so the mid-field reads lush, not
+  // stubby at distance.
   const t2End = TIER1_COUNT + TIER2_COUNT;
   const t2Grid = Math.ceil(Math.sqrt(TIER2_COUNT));
   const t2Cell = 180.0 / t2Grid;
@@ -167,7 +169,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
     for (let gz = 0; gz < t2Grid && gIdx < t2End; gz++) {
       const ox = -90.0 + (gx + gRand() * 0.92 + 0.04) * t2Cell;
       const oz = -90.0 + (gz + gRand() * 0.92 + 0.04) * t2Cell;
-      populateClump(gIdx, ox, oz, 180.0, 1.15);
+      populateClump(gIdx, ox, oz, 180.0, 1.3);
       gIdx++;
     }
   }
