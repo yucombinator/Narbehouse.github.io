@@ -548,17 +548,20 @@ function speak(text, rate = 1, onEnd = null) {
     return false;
   }
   const vm = narbeVoice();
-  // VoiceManager gates on loaded voices; mirror that here so we never
-  // call speechSynthesis.speak() with zero voices (Chrome silently ignores it).
-  if (vm && typeof vm.getVoices === 'function' && vm.getVoices().length === 0) {
-    if (onEnd) onEnd();
-    return false;
-  }
   try {
     hushSpeech();
     const reqId = ++speakReqId;
-    setTimeout(() => {
-      if (reqId !== speakReqId) return;
+    // Chrome loads the voice list asynchronously after the page loads; speaking
+    // before voices are ready can produce silence (speaking:true but no audio).
+    // Wait for voices, then speak inside a fresh check like VoiceManager does.
+    const trySpeak = () => {
+      if (reqId !== speakReqId) return; // superseded by a newer call
+      const voices = ('getVoices' in speechSynthesis) ? speechSynthesis.getVoices() : [];
+      if (voices.length === 0) {
+        // Voices not ready yet — retry shortly; don't drop the announcement.
+        setTimeout(trySpeak, 100);
+        return;
+      }
       const u = new SpeechSynthesisUtterance(text);
       u.rate = rate;
       if (vm) {
@@ -573,7 +576,8 @@ function speak(text, rate = 1, onEnd = null) {
         u.onerror = onEnd;
       }
       speechSynthesis.speak(u);
-    }, 50);
+    };
+    setTimeout(trySpeak, 50);
     return true;
   } catch {
     if (onEnd) onEnd();
