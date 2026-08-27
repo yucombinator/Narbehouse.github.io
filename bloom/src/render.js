@@ -1413,6 +1413,7 @@ export function initRender(canvas) {
   let boostTarget = 0;
   let gustFx = 0;        // eased Enter-gust level (0..1) — breath surge + fov
   let gustFxTarget = 0;
+  let debugCamera = false;
   let frameNo = 0;
   const trailHistory = []; // {x,y,z} recent flight positions for the petal trail
 
@@ -1840,6 +1841,22 @@ const breathMat = new THREE.ShaderMaterial({
     currentThemeIndex() { return themeIndex; },
     setBoost(v) { boostTarget = Math.max(0, Math.min(1, v || 0)); },
     setGust(v) { gustFxTarget = Math.max(0, Math.min(1, v || 0)); },
+    setDebugCamera(v) {
+      debugCamera = !!v;
+      if (debugCamera) camera.rotation.order = 'YXZ';
+    },
+    isDebugCamera() { return debugCamera; },
+    moveDebugCamera(dx, dy, dz) {
+      if (!debugCamera) return;
+      camera.translateX(dx);
+      camera.translateY(dy);
+      camera.translateZ(dz);
+    },
+    orbitDebugCamera(dx, dy) {
+      if (!debugCamera) return;
+      camera.rotation.y -= dx;
+      camera.rotation.x = Math.max(-Math.PI * 0.49, Math.min(Math.PI * 0.49, camera.rotation.x - dy));
+    },
     // Visual quality toggle (menu): resolution + grass density, applied live.
     setQuality(lush) {
       qualityLush = !!lush;
@@ -2252,17 +2269,20 @@ while (breathAcc >= 1) {
       // Camera glides ALWAYS forward, fixed distance behind the petal. It
       // never zooms or steps back — the only "motion" beyond the glide is the
       // gentle fov breathing below, which keeps the grass stable on screen.
-      const camTarget = new THREE.Vector3(
-        petalPos.x * 0.6,
-        petalPos.y * 0.55 + 4.2,
-        petalPos.z + 15
-      );
-      camera.position.lerp(camTarget, 1 - Math.pow(0.0015, dt));
-      camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30);
-      // Weightless drift: a very slow horizon roll and gentle FOV breathing
-      // so cruising never feels locked on rails. Periods are long (20-30s)
-      // and amplitudes tiny — felt more than seen.
-      camera.rotation.z += Math.sin(timeSec * 0.29) * 0.03 + Math.sin(timeSec * 0.83) * 0.008;
+      if (!debugCamera) {
+        const camTarget = new THREE.Vector3(
+          petalPos.x * 0.6,
+          petalPos.y * 0.55 + 4.2,
+          petalPos.z + 15
+        );
+        camera.position.lerp(camTarget, 1 - Math.pow(0.0015, dt));
+        camera.lookAt(petalPos.x * 0.9, petalPos.y * 0.9, petalPos.z - 30);
+      }
+      // Weightless drift belongs to automatic follow only. In debug mode,
+      // accumulating this roll would make the free camera spin continuously.
+      if (!debugCamera) {
+        camera.rotation.z += Math.sin(timeSec * 0.29) * 0.03 + Math.sin(timeSec * 0.83) * 0.008;
+      }
       boostLevel += (boostTarget - boostLevel) * Math.min(1, dt * 3);
       gustFx += (gustFxTarget - gustFx) * Math.min(1, dt * 3);
       camera.fov = 60 + Math.sin(timeSec * 0.21) * 1.3 + boostLevel * 5;

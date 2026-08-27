@@ -41,6 +41,7 @@ window.addEventListener('unhandledrejection', (e) => {
 // --- Input: two buttons, LEFT and RIGHT -------------------------------
 let isTitleOpen = true; // Space/Enter start the game while the title is up
 const input = { left: false, right: false };
+const debugMove = { w: false, a: false, s: false, d: false };
 // Space burst: an optional breath of speed. Never required — the wind carries
 // you at its own pace unless you ask for a little more sky.
 let boostHeld = false;
@@ -69,6 +70,20 @@ let gustHoldTimer = null;
 window.addEventListener('keydown', (e) => {
 	// While the title screen is up, Space/Enter belong to Start.
 	if (isTitleOpen || paused) return;
+  if (e.key.toLowerCase() === 'c' && render) {
+    render.setDebugCamera(!render.isDebugCamera());
+    setDebugCameraOverlay(render.isDebugCamera());
+    e.preventDefault();
+    return;
+  }
+  if (render?.isDebugCamera?.()) {
+    const key = e.key.toLowerCase();
+    if (key in debugMove) {
+      debugMove[key] = true;
+      e.preventDefault();
+      return;
+    }
+  }
 	// While a meadow stop or ceremony is open, keys belong to those dialogs.
 	if (isStopOpen || ceremonyOpen() || resting) return;
 	// Holding Space rides a gentle burst of wind — the one speed-up in the
@@ -92,6 +107,8 @@ window.addEventListener('keydown', (e) => {
 	}
 }, true);
 window.addEventListener('keyup', (e) => {
+  const key = e.key.toLowerCase();
+  if (key in debugMove) debugMove[key] = false;
   if (e.key === ' ') boostHeld = false;
   if (e.key === 'Enter') {
     clearTimeout(gustHoldTimer);
@@ -147,14 +164,40 @@ function canvasSteer(e, value) {
 canvas.addEventListener('pointerdown', (e) => {
   // Capture so a drag that leaves the canvas still releases cleanly.
   canvas.setPointerCapture(e.pointerId);
+  if (render?.isDebugCamera?.()) {
+    canvas.dataset.debugPointer = String(e.pointerId);
+    canvas.dataset.debugX = String(e.clientX);
+    canvas.dataset.debugY = String(e.clientY);
+    return;
+  }
   canvasSteer(e, true);
 });
-canvas.addEventListener('pointerup', (e) => canvasSteer(e, false));
-canvas.addEventListener('pointercancel', (e) => canvasSteer(e, false));
+canvas.addEventListener('pointermove', (e) => {
+  if (!render?.isDebugCamera?.() || canvas.dataset.debugPointer !== String(e.pointerId)) return;
+  const dx = e.clientX - Number(canvas.dataset.debugX);
+  const dy = e.clientY - Number(canvas.dataset.debugY);
+  canvas.dataset.debugX = String(e.clientX);
+  canvas.dataset.debugY = String(e.clientY);
+  render.orbitDebugCamera(dx * 0.006, dy * 0.006);
+});
+canvas.addEventListener('pointerup', (e) => {
+  if (canvas.dataset.debugPointer === String(e.pointerId)) delete canvas.dataset.debugPointer;
+  else canvasSteer(e, false);
+});
+canvas.addEventListener('pointercancel', (e) => {
+  if (canvas.dataset.debugPointer === String(e.pointerId)) delete canvas.dataset.debugPointer;
+  else canvasSteer(e, false);
+});
 canvas.addEventListener('pointerleave', () => {
+  if (render?.isDebugCamera?.()) return;
   input.left = false;
   input.right = false;
 });
+canvas.addEventListener('wheel', (e) => {
+  if (!render?.isDebugCamera?.()) return;
+  render.moveDebugCamera(0, 0, e.deltaY * 0.025);
+  e.preventDefault();
+}, { passive: false });
 
 // (On-screen steering buttons removed — the whole screen steers; see the
 // note above. Overlays come in Task 8.)
@@ -624,6 +667,9 @@ renderBasket();
 const stopEl = document.getElementById('stop');
 const stopPromptEl = document.getElementById('stopPrompt');
 const stopCardsEl = document.getElementById('stopCards');
+function setDebugCameraOverlay(hidden) {
+  stopEl?.classList.toggle('debug-camera-hide', hidden);
+}
 
 function focusChoice(k, silent = false) {
   const n = stopOffer.length || 1;
@@ -657,6 +703,7 @@ function openStop() {
   });
   isStopOpen = true;
   stopEl.classList.add('show');
+  setDebugCameraOverlay(render?.isDebugCamera?.());
   focusChoice(0, true);
   // Greet the chooser: the first flower is read aloud the moment the module
   // opens, so a single Enter can pick it knowingly — no input required first.
@@ -1473,6 +1520,14 @@ function loop() {
   render?.setPetalSize(size);
   render?.setPetalGlow((size - 1) / (MAX_SIZE - 1));
   const windLean = Math.max(-0.3, Math.min(0.3, wind.swayVx * 0.3));
+  if (render?.isDebugCamera?.()) {
+    const debugSpeed = 24;
+    render.moveDebugCamera(
+      ((debugMove.d ? 1 : 0) - (debugMove.a ? 1 : 0)) * debugSpeed * dt,
+      0,
+      ((debugMove.s ? 1 : 0) - (debugMove.w ? 1 : 0)) * debugSpeed * dt,
+    );
+  }
   // Wind effect level (0..1): steering is the big push, but the ambient wind
   // current always contributes a little so there is visible motion at rest.
   const ambWind = Math.abs(wind.swayVx);

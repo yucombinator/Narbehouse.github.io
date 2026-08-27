@@ -95,9 +95,9 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff, lush = f
   // prefix of each tier. To make those prefixes spatially even, each tier's
   // instances are stratified below: the first FAST_N slots of a tier are a
   // Bresenham-uniform subsample of the whole tier, extras trail after.
-  const LUSH_TIER1_COUNT = 18000; // Near domain (60m x 60m) dense carpet
-  const LUSH_TIER2_COUNT = 17000; // Mid domain (180m x 180m)
-  const LUSH_TIER3_COUNT = 24000; // Far ring (400m box, outer 70-200m) lush mode
+  const LUSH_TIER1_COUNT = 18000; // Near domain (120m x 120m) dense carpet
+  const LUSH_TIER2_COUNT = 40000; // Mid domain (180m x 180m), near-tier density
+  const LUSH_TIER3_COUNT = 60000; // Far ring (400m box, outer 70-200m) lush mode
   const FAST_TIER1_COUNT = 15000;
   const FAST_TIER2_COUNT = 14000;
   const FAST_TIER3_COUNT = 1200;
@@ -106,9 +106,9 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff, lush = f
 // when the petal is high. Fixed domain => the wrap never re-tiles, so the
 // field stays put while floating/jumping.
 const TIER4_COUNT = 160000;
-const GRASS_COUNT = LUSH_TIER1_COUNT + LUSH_TIER2_COUNT + LUSH_TIER3_COUNT; // 59,000 allocated
+const GRASS_COUNT = LUSH_TIER1_COUNT + LUSH_TIER2_COUNT + LUSH_TIER3_COUNT; // 95,000 allocated
 const FAST_GRASS_COUNT = FAST_TIER1_COUNT + FAST_TIER2_COUNT + FAST_TIER3_COUNT; // 30,200 drawn in fast mode
-const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 219,000 with outer band
+const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 255,000 with outer band
   let lushMode = !!lush;
 
   const bladeBaseGeo = buildGrassClumpGeometry();
@@ -165,18 +165,17 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 219,000 with outer band
     grassPhases[idx] = gRand() * Math.PI * 2;
   }
 
-  // 1. Tier 1 (Near Dense Field): lush=18k clumps across 60m x 60m box
+  // 1. Tier 1 (Near Dense Field): lush=18k clumps across 120m x 120m box
   const t1Grid = Math.ceil(Math.sqrt(LUSH_TIER1_COUNT));
-  const t1Cell = 60.0 / t1Grid;
+  const t1Cell = 120.0 / t1Grid;
   for (let gx = 0; gx < t1Grid && gIdx < LUSH_TIER1_COUNT; gx++) {
     for (let gz = 0; gz < t1Grid && gIdx < LUSH_TIER1_COUNT; gz++) {
-      const ox = -30.0 + (gx + gRand()) * t1Cell;
-      const oz = -30.0 + (gz + gRand()) * t1Cell;
-      populateClump(gIdx, ox, oz, 60.0, 1.0);
+      const ox = -60.0 + (gx + gRand()) * t1Cell;
+      const oz = -60.0 + (gz + gRand()) * t1Cell;
+      populateClump(gIdx, ox, oz, 120.0, 1.0);
       gIdx++;
     }
   }
-
   // 2. Tier 2 (Mid Rolling Field): lush=17k clumps across 180m x 180m box,
   // grown ~30% larger than the near turf so the mid-field reads lush, not
   // stubby at distance.
@@ -368,14 +367,14 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
         vVariation = aVariation;
         vType = aType;
 
-        // The wrap domain is FIXED per tier (60/180/260/600 m) and never
+        // The wrap domain is FIXED per tier (120/180/400/800 m) and never
         // scales with altitude: scaling L re-tiles every clump, which makes
         // the whole field visibly slide while floating. Tier classification
         // uses the base domain; altitude reach is added by Tier 4's extra
         // instances (drawn only when high), not by resizing existing tiers.
         float L = aDomain;
         float halfL = L * 0.5;
-        float isTier2 = step(80.0, aDomain); // 0 for Tier 1, 1 for Tier 2+
+        float isTier2 = step(150.0, aDomain); // 0 for Tier 1, 1 for Tier 2+
 
         // 2-tier cascaded domain centers:
         // Tier 1: tight around player (-4m)
@@ -386,6 +385,15 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
         float wx = center.x + mod(aOffset.x - center.x + halfL, L) - halfL;
         float wz = center.y + mod(aOffset.y - center.y + halfL, L) - halfL;
         float wy = aHillY; // terrain height precomputed per clump on the CPU
+
+        // Far tiers behind the camera add cost and visual clutter, but the
+        // camera trails the petal, so culling from the petal position would
+        // also remove visible foreground grass between them. Use the actual
+        // camera position to preserve that close strip.
+        if (L > 150.0 && wz > uCameraPos.z + 5.0) {
+          gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+          return;
+        }
 
         // Smooth edge fade towards the domain boundary (domain-relative so
         // each tier dissolves at its own edge). Tier 1 also fades across its
@@ -415,7 +423,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
         // Distant hill crests can hide short blades behind the terrain's
         // silhouette. Give only far-tier grass a modest elevation lift so
         // those slopes still read as a continuous meadow.
-        float hilltopLift = 1.0 + step(80.0, L) * smoothstep(-1.0, 3.5, wy) * 0.55;
+        float hilltopLift = 1.0 + step(150.0, L) * smoothstep(-1.0, 3.5, wy) * 0.55;
         clumpScaleY *= hilltopLift;
         float H = bHeight * clumpScaleY;
 
@@ -494,20 +502,23 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
       // Soft petal-colour halo on the grass beneath. Kept subtle and tight —
       // a wide bright halo read as a "carpet" along the flight path.
       float hd = max(0.0, 1.0 - distToPetal * 0.22);
-      vHalo = 0.16 * hd * hd;
+      // Wrapped tiers all contain a local copy near the petal. Restrict the
+      // glow to the real near field so distant tiers cannot create a moving
+      // duplicate light patch in front of the camera.
+      vHalo = L <= 130.0 ? 0.16 * hd * hd : 0.0;
 
-        if (L <= 80.0 && distToPetal < 30.0) {
+        if (L <= 130.0 && distToPetal < 30.0) {
           // Instant bow-wave parting as the petal glides over grass
           float grassTop = wy + H;
           float vertDist = max(0.0, uPetalPos.y - grassTop);
           float vertFactor = clamp(1.0 - vertDist / 3.2, 0.0, 1.0);
           
-          float wakeRadius = 5.2;
+          float wakeRadius = 9.0;
           float wakeDistFactor = clamp(1.0 - distToPetal / wakeRadius, 0.0, 1.0);
           wakeFactor = wakeDistFactor * wakeDistFactor * vertFactor;
 
           vec2 wakeDir = distToPetal > 0.05 ? (toPetal / distToPetal) : vec2(0.0, -1.0);
-          instantWake = (wakeDir * 0.68 + vec2(0.0, -0.35) + vec2(uPetalBank * 0.35, 0.0)) * (wakeFactor * typeFlex * H * 0.60);
+          instantWake = (wakeDir * 1.05 + vec2(0.0, -0.55) + vec2(uPetalBank * 0.5, 0.0)) * (wakeFactor * typeFlex * H * 1.0);
 
           // Persistent trampled flight corridor
           for (int i = 0; i < TRAIL_MAX - 1; i++) {
@@ -666,7 +677,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
 
         // Grazed wake shimmer: subtle luminous reflection tracing the flight path
         float trampleShimmer = vWake * (0.25 + 0.75 * h);
-        sunLight += vec3(1.0, 0.96, 0.75) * (trampleShimmer * 0.22);
+        sunLight += vec3(1.0, 0.96, 0.75) * (trampleShimmer * 0.48);
 
         vec3 finalColor = baseColor * (skyLight + sunLight);
 
@@ -757,7 +768,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
         const baseDomain = grassDomains[i];
         const L = baseDomain;
         const halfL = L * 0.5;
-        const zBias = baseDomain > 80.0 ? 25.0 : 4.0; // tier by BASE domain
+        const zBias = baseDomain > 150.0 ? 25.0 : 4.0; // tier by BASE domain
         const cx = px, cz = pz - zBias;
         const wx = cx + mod2(grassOffsets[i * 2] - cx + halfL, L) - halfL;
         const wz = cz + mod2(grassOffsets[i * 2 + 1] - cz + halfL, L) - halfL;
