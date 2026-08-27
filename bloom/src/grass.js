@@ -97,19 +97,18 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff, lush = f
   // Bresenham-uniform subsample of the whole tier, extras trail after.
   const LUSH_TIER1_COUNT = 18000; // Near domain (60m x 60m) dense carpet
   const LUSH_TIER2_COUNT = 17000; // Mid domain (180m x 180m)
-  const LUSH_TIER3_COUNT = 3200;  // Far ring (400m box, outer 70-200m) lush mode
+  const LUSH_TIER3_COUNT = 24000; // Far ring (400m box, outer 70-200m) lush mode
   const FAST_TIER1_COUNT = 15000;
   const FAST_TIER2_COUNT = 14000;
   const FAST_TIER3_COUNT = 1200;
-// Tier 4 (Sky Reach): a very sparse outer band (130-300m) in a fixed 600m
-// domain, DRAWN ONLY when the petal is high (instanceCount grows with
-// altitude). Fixed domain => the wrap never re-tiles, so the field stays
-// put while floating/jumping; at cruise these instances are simply not
-// drawn, so there is zero extra cost on the ground.
-const TIER4_COUNT = 6500;
-const GRASS_COUNT = LUSH_TIER1_COUNT + LUSH_TIER2_COUNT + LUSH_TIER3_COUNT; // 38,200 allocated
+// Tier 4 (Sky Reach): a sparse outer band (200-400m) in a fixed 800m
+// domain, drawn for Lush mode and added progressively for Fast mode only
+// when the petal is high. Fixed domain => the wrap never re-tiles, so the
+// field stays put while floating/jumping.
+const TIER4_COUNT = 160000;
+const GRASS_COUNT = LUSH_TIER1_COUNT + LUSH_TIER2_COUNT + LUSH_TIER3_COUNT; // 59,000 allocated
 const FAST_GRASS_COUNT = FAST_TIER1_COUNT + FAST_TIER2_COUNT + FAST_TIER3_COUNT; // 30,200 drawn in fast mode
-const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 44,700 with sky-reach
+const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 219,000 with outer band
   let lushMode = !!lush;
 
   const bladeBaseGeo = buildGrassClumpGeometry();
@@ -201,7 +200,10 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 44,700 with sky-reach
   const t3Domain = 400.0; // lush and fast share domain; fast draws sparser
   const t3Half = t3Domain * 0.5;
   const t3End = t2End + LUSH_TIER3_COUNT;
-  const t3Grid = Math.ceil(Math.sqrt(LUSH_TIER3_COUNT * 3.2)); // over-sample, reject the inner disc
+  // Keep the grid close to the requested population. Excessive oversampling
+  // combined with row-major early termination left the far field populated
+  // only on one side of the domain.
+  const t3Grid = Math.ceil(Math.sqrt(LUSH_TIER3_COUNT / 0.85)); // reject the inner disc
   const t3Cell = t3Domain / t3Grid;
   for (let gx = 0; gx < t3Grid && gIdx < t3End; gx++) {
     for (let gz = 0; gz < t3Grid && gIdx < t3End; gz++) {
@@ -213,17 +215,21 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 44,700 with sky-reach
     }
   }
 
-  // 4. Tier 4 (Sky Reach): outer 130-300m band in a fixed 600m domain.
-  // Over-sampled, inner disc rejected. Draws only at altitude (instanceCount).
+  // 4. Tier 4 (Sky Reach): outer 140-400m band in a fixed 800m domain.
+  // The overlap with Tier 3 hides the handoff where the nearer tier fades out.
+  // Draws only at altitude in Fast mode (instanceCount), and on the ground in
+  // Lush mode.
   const t4End = GRASS_COUNT_ALL;
-  const t4Grid = Math.ceil(Math.sqrt(TIER4_COUNT * 5));
-  const t4Cell = 600.0 / t4Grid;
+  const t4Grid = Math.ceil(Math.sqrt(TIER4_COUNT / 0.80));
+  const t4Cell = 800.0 / t4Grid;
   for (let gx = 0; gx < t4Grid && gIdx < t4End; gx++) {
     for (let gz = 0; gz < t4Grid && gIdx < t4End; gz++) {
-      const ox = -300.0 + (gx + gRand()) * t4Cell;
-      const oz = -300.0 + (gz + gRand()) * t4Cell;
-      if (Math.hypot(ox, oz) < 200.0) continue; // tiers 1-3 cover the inner field
-      populateClump(gIdx, ox, oz, 600.0, 1.1);
+      const ox = -400.0 + (gx + gRand()) * t4Cell;
+      const oz = -400.0 + (gz + gRand()) * t4Cell;
+      if (Math.hypot(ox, oz) < 140.0) continue; // overlap Tier 3 through its fade
+      // Keep distant clumps legible at screen scale; their larger silhouette
+      // fills the far field without adding another hard density boundary.
+      populateClump(gIdx, ox, oz, 800.0, 1.8);
       gIdx++;
     }
   }
@@ -316,7 +322,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
       uHillsParams3: { value: new THREE.Vector4(hp.f2z, hp.p2z, hp.offset, 0) },
       fogColor: { value: new THREE.Color(skyBottom) },
       fogNear: { value: 90 },
-      fogFar: { value: lushMode ? 480 : 320 },
+      fogFar: { value: lushMode ? 650 : 320 },
     },
     vertexShader: `
       precision highp float;
@@ -406,6 +412,11 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
         // Scale factors:
         float clumpScaleX = aScale.x * edgeFade;
         float clumpScaleY = aScale.y * (0.35 + 0.65 * edgeFade);
+        // Distant hill crests can hide short blades behind the terrain's
+        // silhouette. Give only far-tier grass a modest elevation lift so
+        // those slopes still read as a continuous meadow.
+        float hilltopLift = 1.0 + step(80.0, L) * smoothstep(-1.0, 3.5, wy) * 0.55;
+        clumpScaleY *= hilltopLift;
         float H = bHeight * clumpScaleY;
 
         // Flexibility & motion multiplier per botanical type:
@@ -664,15 +675,17 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
         finalColor += uPetalColor * vHalo;
 
         // Blend into turf colour towards domain edges
-        vec3 groundColor = mix(vec3(0.14, 0.28, 0.10), vec3(0.22, 0.38, 0.14), 0.5);
-        finalColor = mix(groundColor, finalColor, vEdgeFade);
+        // Keep the far field green and sunlit while still hiding tier edges;
+        // the old dark fallback made distant grass look like bare soil.
+        vec3 groundColor = mix(vec3(0.14, 0.28, 0.08), vec3(0.22, 0.38, 0.13), 0.5);
+        finalColor = mix(groundColor, finalColor, max(vEdgeFade, 0.55));
 
         // Medium-distance terrain blend: gently soften the clump pattern at
         // 100-200m before fog fully takes over — subtle enough to preserve
         // grass texture while hiding the worst of the grid artifacts.
         float camDist = length(vWorldPos - uCameraPos);
         float terpBlend = clamp((camDist - 100.0) / 100.0, 0.0, 1.0);
-        finalColor = mix(finalColor, groundColor, terpBlend * 0.15);
+        finalColor = mix(finalColor, groundColor, terpBlend * 0.04);
 
         // Atmospheric distance fog
         float depth = gl_FragCoord.z / gl_FragCoord.w;
@@ -711,18 +724,23 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
     grassMat.uniforms.uWindStrength.value = 1.0;
 
     // Altitude-aware detail distance WITHOUT touching the wrap domains:
-    // the extra Tier-4 clumps (fixed 600 m domain) are drawn only when the
-    // petal is above cruise height, via instanceCount. Domains never scale,
+    // the extra Tier-4 clumps (fixed 800 m domain) are drawn for Lush mode
+    // and added for Fast mode only when the petal is above cruise height.
+    // Domains never scale,
     // so the existing field cannot slide or re-tile while floating/jumping.
     const alt = Math.max(0, petalPos.y - hillHeight(petalPos.x, petalPos.z));
     const altAboveCruise = Math.max(0, alt - 3.6);
     const skyReach = Math.min(1, altAboveCruise / 18); // full reach ~21.6m up
     const baseCount = lushMode ? GRASS_COUNT : FAST_GRASS_COUNT;
-    grassGeo.instanceCount = baseCount + Math.round(TIER4_COUNT * skyReach);
+    // Lush mode uses the existing sparse outer band on the ground as well as
+    // in the sky, extending the highest-quality meadow to the full 800m
+    // domain. Fast mode keeps the extra band altitude-only.
+    const lushOuterBand = lushMode ? TIER4_COUNT : 0;
+    grassGeo.instanceCount = baseCount + Math.max(lushOuterBand, Math.round(TIER4_COUNT * skyReach));
 
     // Match the renderer's fog extension so grass haze tracks the terrain.
     if (grassMat.uniforms.fogFar) {
-      const baseNear = 90, baseFar = lushMode ? 480 : 320;
+      const baseNear = 90, baseFar = lushMode ? 650 : 320;
       const fogScale = 1 + skyReach * 2.5; // 1x cruise .. 3.5x at full reach
       grassMat.uniforms.fogNear.value = Math.min(baseFar - 10, baseNear * (1 + (fogScale - 1) * 0.25));
       grassMat.uniforms.fogFar.value = baseFar * fogScale;

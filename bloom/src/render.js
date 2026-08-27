@@ -940,6 +940,23 @@ function buildMountainRange(cfg = {}) {
         float n1 = fbm(vLocal * 0.10);  // broad structure
         float n2 = fbm(vLocal * 0.38);  // mid detail
 
+        // Subtle vegetation texture on the green foothills. Broad noise and
+        // broken vertical streaks suggest distant grass without foreground
+        // blade geometry or a repeating checker pattern.
+        if (green > 0.5) {
+          float meadow = fbm(vLocal * vec3(0.16, 0.08, 0.16));
+          float fineMeadow = fbm(vLocal * vec3(0.55, 0.12, 0.55));
+          float grassCoverage = fbm(vLocal * vec3(1.15, 0.18, 1.15));
+          float streaks = sin(vLocal.x * 0.34 + vLocal.z * 0.07 + n1 * 4.0) * 0.5 + 0.5;
+          float vegetation = meadow * 0.35 + fineMeadow * 0.30 + grassCoverage * 0.20 + streaks * 0.15;
+          vec3 deepGreen = vec3(0.07, 0.16, 0.025);
+          vec3 freshGreen = vec3(0.48, 0.68, 0.22);
+          col = mix(col, mix(deepGreen, freshGreen, vegetation), 0.90);
+          // Preserve broad tonal variation after the lighting pass; without
+          // this, atmospheric distance makes the textured surface look flat.
+          col *= mix(0.68, 1.12, vegetation);
+        }
+
         // Snow from local height + noise-displaced snowline: ragged but
         // continuous along the ridge (no per-quad banding). Wide transition
         // so only the upper massifs carry a bright cap.
@@ -969,8 +986,13 @@ function buildMountainRange(cfg = {}) {
         // Atmospheric haze by distance — the mountains sit 200-370 units
         // out; far ridges melt toward the horizon instead of glowing white.
         float dist = length(vLocal.xz);
-        float haze = clamp((dist - 160.0) / 240.0, 0.0, 1.0) * 0.4;
-        col = mix(col, vec3(0.72, 0.84, 0.96), haze * (1.0 - snow * 0.4));
+        // Custom mountain materials bypass Three.js scene fog, so apply a
+        // stronger depth veil here to separate the far range from the meadow.
+        float haze = smoothstep(110.0, 430.0, dist) * 0.62;
+        // Keep the vegetated foothills green through atmospheric haze; the
+        // old blue-white blend made them read as bare, patchy rock.
+        float hazeAmount = haze * (1.0 - green * 0.96) * (1.0 - snow * 0.4);
+        col = mix(col, vec3(0.72, 0.84, 0.96), hazeAmount);
 
         // Lighting: hemisphere + sun + rim, matching the scene constants.
         vec3 skyC = vec3(0.81, 0.91, 1.00) * 0.75;
