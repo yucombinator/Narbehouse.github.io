@@ -501,10 +501,10 @@ const SHAPE_LAYERS = {
     { tilt: 0.3, r: 1.05 },
     { tilt: 0.5, r: 0.8, off: 0.5, z: -0.08 },
   ],
-  rosette: [ // rose: three stepped layers spiral inward
-    { tilt: 0.45, r: 1.0, off: 0 },
-    { tilt: 0.8, r: 0.68, off: 0.33, z: -0.07 },
-    { tilt: 1.15, r: 0.42, off: 0.66, z: -0.12 },
+  rosette: [ // rose: wide outer petals curl back, tightening toward a tight bud centre
+    { tilt: 1.1, r: 1.0, off: 0 },
+    { tilt: 0.75, r: 0.68, off: 0.33, z: -0.07 },
+    { tilt: 0.4, r: 0.42, off: 0.66, z: -0.12 },
   ],
   wild: [ // wild rose: one open whorl of broad petals
     { tilt: 0.2, r: 1.08 },
