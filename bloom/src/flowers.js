@@ -71,7 +71,7 @@ export const ROSTER = [
 
   // --- Recognizable garden classics ---------------------------------------
   { id: 'rose', name: 'Rose', tts: 'Rose',
-    shape: 'cup', petalHex: '#d94f6f', centerHex: '#b23a55',
+    shape: 'rosette', petalHex: '#d94f6f', centerHex: '#b23a55',
     fact: 'The classic spiral of layered petals' },
   { id: 'marigold', name: 'Marigold', tts: 'Marigold',
     shape: 'puff', petalHex: '#f5a623', centerHex: '#c8781a',

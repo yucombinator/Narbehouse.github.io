@@ -3,7 +3,7 @@ import { initRender, resize, MEADOW_THEMES } from './render.js?v=36';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=9';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
-import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, speciesScale } from './flowers.js?v=5';
+import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, speciesScale } from './flowers.js?v=6';
 import { TOTAL_STOPS, TOTAL_STAGES, createRun, reachStop, commitPick, beginCeremony, finishCeremony } from './run.js';
 import { loadBouquets, addBouquet, resetBouquets } from './gallery.js';
 import { composePostcard } from './poem.js?v=3';
@@ -544,6 +544,7 @@ if (lushCheck) {
   lushCheck.checked = visualsLush;
   lushCheck.addEventListener('change', () => applyVisualPref(lushCheck.checked));
 }
+let speakReqId = 0;
 function speak(text, rate = 1, onEnd = null) {
   if (!ttsOn || !('speechSynthesis' in window)) {
     if (onEnd) onEnd();
@@ -555,7 +556,6 @@ function speak(text, rate = 1, onEnd = null) {
     const u = new SpeechSynthesisUtterance(text);
     u.rate = rate;
     if (vm) {
-      // Speak with the player's hub-wide voice choice.
       const s = vm.getSettings();
       u.pitch = s.pitch;
       u.volume = s.volume;
@@ -566,7 +566,11 @@ function speak(text, rate = 1, onEnd = null) {
       u.onend = onEnd;
       u.onerror = onEnd;
     }
-    speechSynthesis.speak(u);
+    const reqId = ++speakReqId;
+    setTimeout(() => {
+      if (reqId !== speakReqId) return;
+      speechSynthesis.speak(u);
+    }, 50);
     return true;
   } catch {
     if (onEnd) onEnd();
@@ -887,9 +891,9 @@ function activateScanItem() {
   const item = scanItems[scanFocus];
   if (!item) return;
   if (item.act === 'send') {
-    startMailing(); // the send-off itself carries Ben onward
+    startMailing();
   } else {
-    toTitle();
+    openRest();
   }
 }
 if (btnFlyOn) btnFlyOn.addEventListener('click', () => { if (ceremonyOpen() && interludePhase === 'choices') activateScanItemAt('send'); });
