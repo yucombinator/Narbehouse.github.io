@@ -97,7 +97,7 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff, lush = f
   // Bresenham-uniform subsample of the whole tier, extras trail after.
   const LUSH_TIER1_COUNT = 18000; // Near domain (60m x 60m) dense carpet
   const LUSH_TIER2_COUNT = 17000; // Mid domain (180m x 180m)
-  const LUSH_TIER3_COUNT = 1800;  // Far ring (260m box, outer 70-130m)
+  const LUSH_TIER3_COUNT = 3200;  // Far ring (400m box, outer 70-200m) lush mode
   const FAST_TIER1_COUNT = 15000;
   const FAST_TIER2_COUNT = 14000;
   const FAST_TIER3_COUNT = 1200;
@@ -107,9 +107,9 @@ export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff, lush = f
 // put while floating/jumping; at cruise these instances are simply not
 // drawn, so there is zero extra cost on the ground.
 const TIER4_COUNT = 6500;
-const GRASS_COUNT = LUSH_TIER1_COUNT + LUSH_TIER2_COUNT + LUSH_TIER3_COUNT; // 36,800 allocated
+const GRASS_COUNT = LUSH_TIER1_COUNT + LUSH_TIER2_COUNT + LUSH_TIER3_COUNT; // 38,200 allocated
 const FAST_GRASS_COUNT = FAST_TIER1_COUNT + FAST_TIER2_COUNT + FAST_TIER3_COUNT; // 30,200 drawn in fast mode
-const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 43,300 with sky-reach
+const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 44,700 with sky-reach
   let lushMode = !!lush;
 
   const bladeBaseGeo = buildGrassClumpGeometry();
@@ -193,19 +193,22 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 43,300 with sky-reach
     }
   }
 
-  // 3. Tier 3 (Far Ring): sparse grass filling the 70m..130m band so the
-  // meadow dissolves into the fog instead of clipping. Only the outer ring is
+  // 3. Tier 3 (Far Ring): sparse grass filling the 70m..200m band (lush: 400m
+  // domain, fast: same domain but fewer clumps via stratify) so the meadow
+  // dissolves into the fog instead of clipping. Only the outer ring is
   // populated (Tier 2 already covers the inner disc), with a generous overlap
   // into Tier 2's fade so there is no density dip at the seam.
+  const t3Domain = 400.0; // lush and fast share domain; fast draws sparser
+  const t3Half = t3Domain * 0.5;
   const t3End = t2End + LUSH_TIER3_COUNT;
   const t3Grid = Math.ceil(Math.sqrt(LUSH_TIER3_COUNT * 3.2)); // over-sample, reject the inner disc
-  const t3Cell = 260.0 / t3Grid;
+  const t3Cell = t3Domain / t3Grid;
   for (let gx = 0; gx < t3Grid && gIdx < t3End; gx++) {
     for (let gz = 0; gz < t3Grid && gIdx < t3End; gz++) {
-      const ox = -130.0 + (gx + gRand() * 0.92 + 0.04) * t3Cell;
-      const oz = -130.0 + (gz + gRand() * 0.92 + 0.04) * t3Cell;
+      const ox = -t3Half + (gx + gRand() * 0.92 + 0.04) * t3Cell;
+      const oz = -t3Half + (gz + gRand() * 0.92 + 0.04) * t3Cell;
       if (Math.hypot(ox, oz) < 70.0) continue; // Tier 2 covers the inner disc
-      populateClump(gIdx, ox, oz, 260.0, 1.05);
+      populateClump(gIdx, ox, oz, t3Domain, 1.05);
       gIdx++;
     }
   }
@@ -219,7 +222,7 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 43,300 with sky-reach
     for (let gz = 0; gz < t4Grid && gIdx < t4End; gz++) {
       const ox = -300.0 + (gx + gRand() * 0.92 + 0.04) * t4Cell;
       const oz = -300.0 + (gz + gRand() * 0.92 + 0.04) * t4Cell;
-      if (Math.hypot(ox, oz) < 130.0) continue; // tiers 1-3 cover the inner field
+      if (Math.hypot(ox, oz) < 200.0) continue; // tiers 1-3 cover the inner field
       populateClump(gIdx, ox, oz, 600.0, 1.1);
       gIdx++;
     }
@@ -313,7 +316,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
       uHillsParams3: { value: new THREE.Vector4(hp.f2z, hp.p2z, hp.offset, 0) },
       fogColor: { value: new THREE.Color(skyBottom) },
       fogNear: { value: 90 },
-      fogFar: { value: 320 },
+      fogFar: { value: lushMode ? 480 : 320 },
     },
     vertexShader: `
       precision highp float;
@@ -711,7 +714,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
 
     // Match the renderer's fog extension so grass haze tracks the terrain.
     if (grassMat.uniforms.fogFar) {
-      const baseNear = 90, baseFar = 320;
+      const baseNear = 90, baseFar = lushMode ? 480 : 320;
       const fogScale = 1 + skyReach * 2.5; // 1x cruise .. 3.5x at full reach
       grassMat.uniforms.fogNear.value = Math.min(baseFar - 10, baseNear * (1 + (fogScale - 1) * 0.25));
       grassMat.uniforms.fogFar.value = baseFar * fogScale;

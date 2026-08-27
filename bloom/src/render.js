@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_VARIANTS } from './trail.js?v=8';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=21';
+import { createGrass } from './grass.js?v=22';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -1092,7 +1092,7 @@ export function initRender(canvas) {
   renderer.shadowMap.autoUpdate = false;
   renderer.setSize(window.innerWidth, window.innerHeight);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY_BOTTOM, 75, 380);
+  scene.fog = new THREE.Fog(SKY_BOTTOM, 75, qualityLush ? 500 : 380);
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 520);
   camera.position.set(0, 10, 40);
 
@@ -1547,9 +1547,9 @@ let themeFogNear = 75, themeFogFar = 380; // baseline from the current theme
     paintSky(theme);
     scene.fog.color.set(theme.skyBottom);
     scene.fog.near = theme.fogNear;
-    scene.fog.far = theme.fogFar;
+    scene.fog.far = theme.fogFar * (qualityLush ? 1.35 : 1.0);
     themeFogNear = theme.fogNear;
-    themeFogFar = theme.fogFar;
+    themeFogFar = theme.fogFar * (qualityLush ? 1.35 : 1.0);
     // Custom shaders carry their own fog uniforms — sweep the scene once per
     // theme change and sync every material that has them.
     scene.traverse((o) => {
