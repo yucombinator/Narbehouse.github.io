@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=32';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=33';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=8';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
@@ -118,6 +118,7 @@ const debugText = () => {
   lines.push(`fps        ${trueFps.toFixed(0)}`);
   lines.push(`frame ms   ${mainMs.toFixed(2)}`);
   if (gpu > 0) lines.push(`gpu ms     ${gpu.toFixed(2)}`);
+  lines.push(`quality    ${render?.isLush?.() ? 'lush' : 'fast'}`);
   if (info) {
     lines.push(`draw calls ${info.render.calls}`);
     lines.push(`triangles  ${(info.render.triangles / 1e6).toFixed(2)}M`);
@@ -315,7 +316,7 @@ window.__petalGame = {
     render.resetTrail(); // don't let petals trail through stale teleport paths
   },
   state() {
-    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel, gust: gust.active, paused, resting, fps: frameFps };
+    return { size, meadowBuds, meadowTotal, collected: collectedSet.size, blooms, seed: meadowSeed, allBloomed, openBuds: render?.budsOpened?.() ?? -1, theme: render?.currentThemeIndex?.() ?? -1, x: petal.x, z: petal.z, boost: boostLevel, gust: gust.active, paused, resting, fps: frameFps, quality: render?.isLush?.() ? 'lush' : 'fast' };
   },
   bud(i) {
     return trail.buds[i]
@@ -524,6 +525,24 @@ if (envCheck) {
     } catch { /* storage unavailable */ }
     location.reload();
   });
+}
+
+// Visual quality ("Richer visuals" toggle). render.js applies the stored
+// pref at boot; this mirrors it for the checkbox + pause menu and re-applies
+// live (pixel ratio + grass density) when changed. Persisted immediately.
+const QUALITY_KEY = 'petalBloom.quality';
+const lushCheck = document.getElementById('lushOn');
+let visualsLush = false;
+try { visualsLush = storage.getItem(QUALITY_KEY) === 'lush'; } catch { /* no storage */ }
+function applyVisualPref(on) {
+  visualsLush = !!on;
+  try { storage.setItem(QUALITY_KEY, on ? 'lush' : 'fast'); } catch { /* no storage */ }
+  if (lushCheck) lushCheck.checked = visualsLush;
+  if (render && render.setQuality) render.setQuality(visualsLush);
+}
+if (lushCheck) {
+  lushCheck.checked = visualsLush;
+  lushCheck.addEventListener('change', () => applyVisualPref(lushCheck.checked));
 }
 function speak(text, rate = 1, onEnd = null) {
   if (!ttsOn || !('speechSynthesis' in window)) {
@@ -969,6 +988,7 @@ function pauseMenuItems() {
       { label: () => `Ambient sound: ${ambientCheck && ambientCheck.checked ? 'On' : 'Off'}`, act: 'toggle-audio' },
       { label: () => `Scanning: ${isAutoScan() ? 'Automatic' : 'Manual — press Space'}`, act: 'toggle-scan' },
       { label: () => `Scan speed: ${currentScanInterval() / 1000} seconds`, act: 'cycle-scan-speed' },
+      { label: () => `Visuals: ${visualsLush ? 'Richer' : 'Faster'}`, act: 'toggle-visuals' },
       { label: () => 'Back', act: 'back' },
     ];
   }
@@ -1132,6 +1152,13 @@ function activatePauseItem(i = pauseFocus) {
         renderPauseItems();
         speak(ambientCheck.checked ? 'Ambient on' : 'Ambient off');
       }
+      armPauseScan();
+      break;
+    }
+    case 'toggle-visuals': {
+      applyVisualPref(!visualsLush);
+      renderPauseItems();
+      speak(visualsLush ? 'Richer visuals: sharper, heavier' : 'Faster visuals: lighter');
       armPauseScan();
       break;
     }

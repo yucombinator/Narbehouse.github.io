@@ -86,19 +86,31 @@ export function buildGrassClumpGeometry() {
   return geo;
 }
 
-export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff }) {
+export function createGrass({ scene, hillsParams, skyBottom = 0xc8e6ff, lush = false }) {
   const hp = hillsParams;
-  const TIER1_COUNT = 15000; // Near domain (60m x 60m) - dense carpet around player (~0.45m spacing)
-  const TIER2_COUNT = 14000; // Mid domain (180m x 180m) - lush rolling meadows (~1.0m spacing)
-  const TIER3_COUNT = 1200;  // Far ring (260m box, outer 70-130m) - sparse, fogged, hides the domain edge
+  // Two quality levels (menu toggle, petalBloom.quality):
+  //   Lush  - full clump counts, higher internal resolution (render.js)
+  //   Faster (default) - a uniform ~83% subsample of every tier
+  // Buffers are always ALLOCATED at lush counts; fast mode simply draws a
+  // prefix of each tier. To make those prefixes spatially even, each tier's
+  // instances are stratified below: the first FAST_N slots of a tier are a
+  // Bresenham-uniform subsample of the whole tier, extras trail after.
+  const LUSH_TIER1_COUNT = 18000; // Near domain (60m x 60m) dense carpet
+  const LUSH_TIER2_COUNT = 17000; // Mid domain (180m x 180m)
+  const LUSH_TIER3_COUNT = 1800;  // Far ring (260m box, outer 70-130m)
+  const FAST_TIER1_COUNT = 15000;
+  const FAST_TIER2_COUNT = 14000;
+  const FAST_TIER3_COUNT = 1200;
 // Tier 4 (Sky Reach): a very sparse outer band (130-300m) in a fixed 600m
 // domain, DRAWN ONLY when the petal is high (instanceCount grows with
 // altitude). Fixed domain => the wrap never re-tiles, so the field stays
 // put while floating/jumping; at cruise these instances are simply not
 // drawn, so there is zero extra cost on the ground.
 const TIER4_COUNT = 6500;
-const GRASS_COUNT = TIER1_COUNT + TIER2_COUNT + TIER3_COUNT; // 42,500 always-drawn
-const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 49,000 with sky-reach
+const GRASS_COUNT = LUSH_TIER1_COUNT + LUSH_TIER2_COUNT + LUSH_TIER3_COUNT; // 36,800 allocated
+const FAST_GRASS_COUNT = FAST_TIER1_COUNT + FAST_TIER2_COUNT + FAST_TIER3_COUNT; // 30,200 drawn in fast mode
+const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 43,300 with sky-reach
+  let lushMode = !!lush;
 
   const bladeBaseGeo = buildGrassClumpGeometry();
   const grassGeo = new THREE.InstancedBufferGeometry();
@@ -154,11 +166,11 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 49,000 with sky-reach
     grassPhases[idx] = gRand() * Math.PI * 2;
   }
 
-  // 1. Tier 1 (Near Dense Field): 18,000 clumps across 60m x 60m box
-  const t1Grid = Math.ceil(Math.sqrt(TIER1_COUNT));
+  // 1. Tier 1 (Near Dense Field): lush=18k clumps across 60m x 60m box
+  const t1Grid = Math.ceil(Math.sqrt(LUSH_TIER1_COUNT));
   const t1Cell = 60.0 / t1Grid;
-  for (let gx = 0; gx < t1Grid && gIdx < TIER1_COUNT; gx++) {
-    for (let gz = 0; gz < t1Grid && gIdx < TIER1_COUNT; gz++) {
+  for (let gx = 0; gx < t1Grid && gIdx < LUSH_TIER1_COUNT; gx++) {
+    for (let gz = 0; gz < t1Grid && gIdx < LUSH_TIER1_COUNT; gz++) {
       const ox = -30.0 + (gx + gRand() * 0.92 + 0.04) * t1Cell;
       const oz = -30.0 + (gz + gRand() * 0.92 + 0.04) * t1Cell;
       populateClump(gIdx, ox, oz, 60.0, 1.0);
@@ -166,11 +178,11 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 49,000 with sky-reach
     }
   }
 
-  // 2. Tier 2 (Mid Rolling Field): 20,000 clumps across 180m x 180m box,
+  // 2. Tier 2 (Mid Rolling Field): lush=17k clumps across 180m x 180m box,
   // grown ~30% larger than the near turf so the mid-field reads lush, not
   // stubby at distance.
-  const t2End = TIER1_COUNT + TIER2_COUNT;
-  const t2Grid = Math.ceil(Math.sqrt(TIER2_COUNT));
+  const t2End = LUSH_TIER1_COUNT + LUSH_TIER2_COUNT;
+  const t2Grid = Math.ceil(Math.sqrt(LUSH_TIER2_COUNT));
   const t2Cell = 180.0 / t2Grid;
   for (let gx = 0; gx < t2Grid && gIdx < t2End; gx++) {
     for (let gz = 0; gz < t2Grid && gIdx < t2End; gz++) {
@@ -185,8 +197,8 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 49,000 with sky-reach
   // meadow dissolves into the fog instead of clipping. Only the outer ring is
   // populated (Tier 2 already covers the inner disc), with a generous overlap
   // into Tier 2's fade so there is no density dip at the seam.
-  const t3End = t2End + TIER3_COUNT;
-  const t3Grid = Math.ceil(Math.sqrt(TIER3_COUNT * 3.2)); // over-sample, reject the inner disc
+  const t3End = t2End + LUSH_TIER3_COUNT;
+  const t3Grid = Math.ceil(Math.sqrt(LUSH_TIER3_COUNT * 3.2)); // over-sample, reject the inner disc
   const t3Cell = 260.0 / t3Grid;
   for (let gx = 0; gx < t3Grid && gIdx < t3End; gx++) {
     for (let gz = 0; gz < t3Grid && gIdx < t3End; gz++) {
@@ -212,6 +224,38 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 49,000 with sky-reach
       gIdx++;
     }
   }
+
+  // Stratify a tier slice [start, end) so its first `keep` slots are a
+  // Bresenham-uniform subsample of the whole tier (every kept index spreads
+  // evenly across the grid) and the remaining extras trail behind. Fast mode
+  // draws prefixes, so this keeps the visible field spatially even while
+  // cutting drawn clumps per tier. One-time cost at boot.
+  function stratify(start, end, keep) {
+    const total = end - start;
+    const isKept = (i) =>
+      Math.floor(((i + 1) * keep) / total) > Math.floor((i * keep) / total);
+    const order = [];
+    for (let i = 0; i < total; i++) if (isKept(i)) order.push(i);
+    for (let i = 0; i < total; i++) if (!isKept(i)) order.push(i);
+    const apply = (arr, stride) => {
+      const tmp = arr.slice(start * stride, end * stride);
+      for (let k = 0; k < total; k++) {
+        const src = order[k] * stride;
+        const dst = (start + k) * stride;
+        for (let c = 0; c < stride; c++) arr[dst + c] = tmp[src + c];
+      }
+    };
+    apply(grassOffsets, 2);
+    apply(grassScales, 2);
+    apply(grassRotations, 1);
+    apply(grassVariations, 3);
+    apply(grassPhases, 1);
+    apply(grassTypes, 1);
+    apply(grassDomains, 1);
+  }
+  stratify(0, LUSH_TIER1_COUNT, FAST_TIER1_COUNT);
+  stratify(LUSH_TIER1_COUNT, LUSH_TIER1_COUNT + LUSH_TIER2_COUNT, FAST_TIER2_COUNT);
+  stratify(LUSH_TIER1_COUNT + LUSH_TIER2_COUNT, GRASS_COUNT, FAST_TIER3_COUNT);
 
   grassGeo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(grassOffsets, 2));
   grassGeo.setAttribute('aScale', new THREE.InstancedBufferAttribute(grassScales, 2));
@@ -662,8 +706,8 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
     const alt = Math.max(0, petalPos.y - hillHeight(petalPos.x, petalPos.z));
     const altAboveCruise = Math.max(0, alt - 3.6);
     const skyReach = Math.min(1, altAboveCruise / 18); // full reach ~21.6m up
-    const drawCount = GRASS_COUNT + Math.round(TIER4_COUNT * skyReach);
-    grassGeo.instanceCount = drawCount;
+    const baseCount = lushMode ? GRASS_COUNT : FAST_GRASS_COUNT;
+    grassGeo.instanceCount = baseCount + Math.round(TIER4_COUNT * skyReach);
 
     // Match the renderer's fog extension so grass haze tracks the terrain.
     if (grassMat.uniforms.fogFar) {
@@ -679,7 +723,8 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
     // stay in sync. Fixed domains => the wrap is stable at any altitude.
     {
       const px = petalPos.x, pz = petalPos.z;
-      for (let i = 0; i < GRASS_COUNT_ALL; i++) {
+      // Only the drawn prefix needs heights (fast mode skips its extras).
+      for (let i = 0, n = grassGeo.instanceCount; i < n; i++) {
         const baseDomain = grassDomains[i];
         const L = baseDomain;
         const halfL = L * 0.5;
@@ -706,5 +751,6 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
     geometry: grassGeo,
     update,
     dispose,
+    setDensity(v) { lushMode = !!v; },
   };
 }

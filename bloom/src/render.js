@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_VARIANTS } from './trail.js?v=8';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=20';
+import { createGrass } from './grass.js?v=21';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -1079,11 +1079,14 @@ function buildLakes(cfg = {}) {
 export function initRender(canvas) {
   // preserveDrawingBuffer stays off: keeping it forced a full framebuffer
   // copy-back every frame — one of the heaviest avoidable costs.
-  // antialias off + 1.0 pixel ratio: on a Retina Mac this is roughly a 4x
-  // cut in fragment+MSAA work, which is the difference between choppy and
-  // smooth. The low-poly, foggy, soft-glow art hides it well.
+  // antialias stays off in both quality modes (switching it needs a new GL
+  // context). Resolution IS the quality lever the menu toggle switches:
+  //   Faster (default) 1.0x DPR — smooth on integrated Mac GPUs
+  //   Lush — up to native Retina (2.0x DPR) plus denser grass
+  let qualityLush = false;
+  try { qualityLush = localStorage.getItem('petalBloom.quality') === 'lush'; } catch { /* storage unavailable */ }
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
+  renderer.setPixelRatio(qualityLush ? Math.min(window.devicePixelRatio || 1, 2.0) : 1.0);
   // Shadows follow a smoothly-moving sun; refreshing the map at ~20Hz is
   // imperceptible and saves a full caster pass on the other frames.
   renderer.shadowMap.autoUpdate = false;
@@ -1306,6 +1309,7 @@ export function initRender(canvas) {
     scene,
     hillsParams: hp,
     skyBottom: SKY_BOTTOM,
+    lush: qualityLush,
   });  // --- Flower, Stem & Mother Materials (Unified with Grass SSS & Lighting) ---
   const flowerCrownMat = new THREE.ShaderMaterial({
     uniforms: {
@@ -1814,6 +1818,13 @@ const breathMat = new THREE.ShaderMaterial({
     currentThemeIndex() { return themeIndex; },
     setBoost(v) { boostTarget = Math.max(0, Math.min(1, v || 0)); },
     setGust(v) { gustFxTarget = Math.max(0, Math.min(1, v || 0)); },
+    // Visual quality toggle (menu): resolution + grass density, applied live.
+    setQuality(lush) {
+      qualityLush = !!lush;
+      renderer.setPixelRatio(qualityLush ? Math.min(window.devicePixelRatio || 1, 2.0) : 1.0);
+      if (grass.setDensity) grass.setDensity(qualityLush);
+    },
+    isLush() { return qualityLush; },
     flowerStats() {
       return { petalCount: petalColors.length, budKinds: KIND_GEOMETRIES.length };
     },
