@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FLOWER_VARIANTS } from './trail.js?v=8';
 import { HILLS } from './hill.js';
 import { windAt } from './wind.js';
-import { createGrass } from './grass.js?v=22';
+import { createGrass } from './grass.js?v=23';
 
 export const SKY_TOP = 0x529ef0;
 export const SKY_BOTTOM = 0xc8e6ff;
@@ -1231,8 +1231,8 @@ export function initRender(canvas) {
         vec2 warpedPos = pos + warp * 16.0;
 
         // --- Near Turf Shading (Base under 3D grass bouquet)
-        vec3 cSoil = vec3(0.18, 0.30, 0.12);
-        vec3 cLush = vec3(0.28, 0.46, 0.16);
+        vec3 cSoil = vec3(0.10, 0.20, 0.07);
+        vec3 cLush = vec3(0.16, 0.30, 0.10);
         vec3 nearBase = mix(cSoil, cLush, elevNorm);
 
         // Smooth non-checkerboard near organic variations
@@ -1609,7 +1609,7 @@ let themeFogNear = 75, themeFogFar = 380; // baseline from the current theme
   // it, then stays open for the rest of the visit. Fresh meadow = fresh buds.
   let budOpen = []; // 0 = closed, 1 = fully bloomed (latched)
   const BLOOM_NEAR = 9;   // distance at which blooming starts
-  const BLOOM_FAR = 46;   // fully open when closer than this
+  const BLOOM_FAR = 30;   // fully open when closer than this (right before pass)
   let budLocal = [];
   const pops = [];
   const ringPool = [];
@@ -2121,11 +2121,11 @@ const breathMat = new THREE.ShaderMaterial({
               budOpen[i] = Math.min(1, budOpen[i] + Math.max(want, 0) * dt * 1.4);
             }
             const open = budOpen[i];
-            // Closed buds still read as flowers: a generous floor scale and
-            // only a slight sink keep petal shapes visible across the meadow
-            // (they were dots at the old 42% floor).
-            const sc = (0.95 + 0.05 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
-            dummy.position.set(b.x, crownY - (1 - open) * 0.18, b.z);
+            // Closed buds are tight, small buds; they open into full blooms
+            // right as the petal passes — a dramatic reveal instead of a
+            // subtle size nudge.
+            const sc = (0.40 + 0.60 * open) * (1 + Math.sin(timeSec * 2.5 + i) * 0.05 * open);
+            dummy.position.set(b.x, crownY - (1 - open) * 0.55, b.z);
             dummy.scale.setScalar(sc * KIND_SCALE[kind] * (b.scale ?? 1));
             // Each plant keeps its own gentle nod and a compass spin (petals rotate
             // around the vertical); crowns face the sky, never the camera.
@@ -2137,7 +2137,7 @@ const breathMat = new THREE.ShaderMaterial({
             if (stemMesh) {
               stemDummy.position.set(b.x, ground, b.z);
               stemDummy.rotation.set(0, 0, Math.sin(timeSec * 1.6 + i) * 0.04 * open); // gentle sway
-              stemDummy.scale.set(0.7 + 0.3 * open, STEM_LEN * (0.55 + 0.45 * open), 0.7 + 0.3 * open);
+              stemDummy.scale.set(0.5 + 0.5 * open, STEM_LEN * (0.35 + 0.65 * open), 0.5 + 0.5 * open);
               stemDummy.updateMatrix();
               stemMesh.setMatrixAt(local, stemDummy.matrix);
             }

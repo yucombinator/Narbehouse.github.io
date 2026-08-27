@@ -10,13 +10,13 @@ export const CRUISE_SPEED = 6;      // world units / second, constant
 export const MAX_BANK_DEG = 35;     // max bank angle, two-button steering
 export const G_EFF = 9.8;           // feel constant for the curvature budget
 export const MAX_CURVATURE = 0.09;  // |x''(z)| cap; hard invariant
-export const CLUSTER_SPACING = 50;      // shorter gaps — the meadow stays floral
-export const CLUSTER_SPACING_JITTER = 20; // random gap variation
-export const CLUSTER_RADIUS = 4.6;      // wider scatter — clusters aren't a line
-export const CLUSTER_MIN = 4;           // flowers per bunch: a proper little patch
-export const CLUSTER_MAX = 6;
+export const CLUSTER_SPACING = 70;      // wider gaps — patches aren't wall-to-wall
+export const CLUSTER_SPACING_JITTER = 25; // random gap variation
+export const CLUSTER_RADIUS = 7.0;      // wider scatter — flowers spread into the meadow
+export const CLUSTER_MIN = 2;           // flowers per bunch: sparse, natural patches
+export const CLUSTER_MAX = 4;
 export const ALT_AMPLITUDE = 3.0;       // max |y(z) - HILL_OFFSET| flight path
-export const BUD_SPREAD = CLUSTER_RADIUS + 2.2; // corridor spread used by tests
+export const BUD_SPREAD = CLUSTER_RADIUS + 2.2; // corridor spread used by tests (now ~9.2)
 export const FLY_ALT = 3.6;             // how high above the ground the petal cruises
 
 export const PALETTE = [
@@ -97,8 +97,8 @@ export function generateTrail({ seed, length = 400, species = null }) {
     const n = CLUSTER_MIN + Math.floor(rand() * (CLUSTER_MAX - CLUSTER_MIN + 1));
     // Bigger lateral + depth scatter per bunch so flowers gather in clumps
     // off the path, not a tidy row along it.
-    const cx = curveX(z) + (rand() - 0.5) * 7;
-    const cz = z + (rand() - 0.5) * 6;
+    const cx = curveX(z) + (rand() - 0.5) * 14;
+    const cz = z + (rand() - 0.5) * 8;
     for (let i = 0; i < n; i++) {
       const a = rand() * Math.PI * 2;
       const r = Math.sqrt(rand()) * CLUSTER_RADIUS;

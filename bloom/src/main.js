@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=34';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=35';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=8';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
@@ -1404,7 +1404,7 @@ function gustUpdate(dt) {
       gust.active = true;
       gust.t = 0;
       gust.dur = 4.5 + Math.random() * 2.5;   // seconds aloft
-      gust.peak = 5 + Math.random() * 3.5;    // how high the arc lifts
+      gust.peak = 2.5 + Math.random() * 2.0;    // how high the arc lifts
     }
     return 0;
   }

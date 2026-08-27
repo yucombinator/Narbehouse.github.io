@@ -171,8 +171,8 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 44,700 with sky-reach
   const t1Cell = 60.0 / t1Grid;
   for (let gx = 0; gx < t1Grid && gIdx < LUSH_TIER1_COUNT; gx++) {
     for (let gz = 0; gz < t1Grid && gIdx < LUSH_TIER1_COUNT; gz++) {
-      const ox = -30.0 + (gx + gRand() * 0.92 + 0.04) * t1Cell;
-      const oz = -30.0 + (gz + gRand() * 0.92 + 0.04) * t1Cell;
+      const ox = -30.0 + (gx + gRand()) * t1Cell;
+      const oz = -30.0 + (gz + gRand()) * t1Cell;
       populateClump(gIdx, ox, oz, 60.0, 1.0);
       gIdx++;
     }
@@ -186,8 +186,8 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 44,700 with sky-reach
   const t2Cell = 180.0 / t2Grid;
   for (let gx = 0; gx < t2Grid && gIdx < t2End; gx++) {
     for (let gz = 0; gz < t2Grid && gIdx < t2End; gz++) {
-      const ox = -90.0 + (gx + gRand() * 0.92 + 0.04) * t2Cell;
-      const oz = -90.0 + (gz + gRand() * 0.92 + 0.04) * t2Cell;
+      const ox = -90.0 + (gx + gRand()) * t2Cell;
+      const oz = -90.0 + (gz + gRand()) * t2Cell;
       populateClump(gIdx, ox, oz, 180.0, 1.3);
       gIdx++;
     }
@@ -205,8 +205,8 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 44,700 with sky-reach
   const t3Cell = t3Domain / t3Grid;
   for (let gx = 0; gx < t3Grid && gIdx < t3End; gx++) {
     for (let gz = 0; gz < t3Grid && gIdx < t3End; gz++) {
-      const ox = -t3Half + (gx + gRand() * 0.92 + 0.04) * t3Cell;
-      const oz = -t3Half + (gz + gRand() * 0.92 + 0.04) * t3Cell;
+      const ox = -t3Half + (gx + gRand()) * t3Cell;
+      const oz = -t3Half + (gz + gRand()) * t3Cell;
       if (Math.hypot(ox, oz) < 70.0) continue; // Tier 2 covers the inner disc
       populateClump(gIdx, ox, oz, t3Domain, 1.05);
       gIdx++;
@@ -220,8 +220,8 @@ const GRASS_COUNT_ALL = GRASS_COUNT + TIER4_COUNT; // 44,700 with sky-reach
   const t4Cell = 600.0 / t4Grid;
   for (let gx = 0; gx < t4Grid && gIdx < t4End; gx++) {
     for (let gz = 0; gz < t4Grid && gIdx < t4End; gz++) {
-      const ox = -300.0 + (gx + gRand() * 0.92 + 0.04) * t4Cell;
-      const oz = -300.0 + (gz + gRand() * 0.92 + 0.04) * t4Cell;
+      const ox = -300.0 + (gx + gRand()) * t4Cell;
+      const oz = -300.0 + (gz + gRand()) * t4Cell;
       if (Math.hypot(ox, oz) < 200.0) continue; // tiers 1-3 cover the inner field
       populateClump(gIdx, ox, oz, 600.0, 1.1);
       gIdx++;
@@ -389,7 +389,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
         float edgeFade = 1.0;
         {
           float halfL = L * 0.5;
-          float fadeW = mix(9.0, halfL * 0.18, isTier2);
+          float fadeW = mix(12.0, halfL * 0.18, isTier2);
           edgeFade = clamp((halfL - distFromCenter) / fadeW, 0.0, 1.0);
         }
         vEdgeFade = edgeFade;
@@ -606,7 +606,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
       void main() {
         float h = vUv.y;
 
-        vec3 terrainBase = mix(vec3(0.20, 0.36, 0.14), vec3(0.32, 0.52, 0.20), 0.5);
+        vec3 terrainBase = mix(vec3(0.14, 0.28, 0.10), vec3(0.22, 0.38, 0.14), 0.5);
 
         vec3 colRoot;
         vec3 colMid;
@@ -663,8 +663,14 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
         finalColor += uPetalColor * vHalo;
 
         // Blend into turf colour towards domain edges
-        vec3 groundColor = mix(vec3(0.20, 0.36, 0.14), vec3(0.32, 0.52, 0.20), 0.5);
+        vec3 groundColor = mix(vec3(0.14, 0.28, 0.10), vec3(0.22, 0.38, 0.14), 0.5);
         finalColor = mix(groundColor, finalColor, vEdgeFade);
+
+        // Medium-distance terrain blend: soften the grid/clump pattern at
+        // 60-150m by fading toward the ground colour before fog takes over.
+        float camDist = length(vWorldPos - uCameraPos);
+        float terpBlend = clamp((camDist - 60.0) / 90.0, 0.0, 1.0);
+        finalColor = mix(finalColor, groundColor, terpBlend * 0.45);
 
         // Atmospheric distance fog
         float depth = gl_FragCoord.z / gl_FragCoord.w;
