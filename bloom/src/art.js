@@ -33,17 +33,23 @@ export function flowerHeadSvg(f, r = 15, extra = '') {
     }
     out += `<circle cx="0" cy="0" r="${r * 0.34}" fill="${c}"/>`;
   } else if (f.shape === 'rosette') {
-    // Rose: stepped rings spiralling inward.
-    for (let i = 0; i < 6; i++) {
-      const a = Math.round((i / 6) * 360);
-      out += `<ellipse cx="0" cy="${-r * 0.58}" rx="${r * 0.36}" ry="${r * 0.56}" fill="${p}" stroke="${shade}" stroke-width="0.5" transform="rotate(${a})"/>`;
+    // Rose viewed from above: overlapping petal arcs spiralling inward.
+    // Outer ring — broad petals curving back.
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * 360;
+      out += `<ellipse cx="0" cy="${-r * 0.48}" rx="${r * 0.44}" ry="${r * 0.38}" fill="${p}" stroke="${shade}" stroke-width="0.5" transform="rotate(${a})"/>`;
     }
+    // Middle ring — smaller, offset to fill gaps.
     for (let i = 0; i < 4; i++) {
-      const a = Math.round((i / 4) * 360 + 45);
-      out += `<ellipse cx="0" cy="${-r * 0.28}" rx="${r * 0.26}" ry="${r * 0.34}" fill="${p}" stroke="${shade}" stroke-width="0.5" transform="rotate(${a})"/>`;
+      const a = (i / 4) * 360 + 22;
+      out += `<ellipse cx="0" cy="${-r * 0.26}" rx="${r * 0.30}" ry="${r * 0.26}" fill="${p}" stroke="${shade}" stroke-width="0.4" transform="rotate(${a})"/>`;
     }
-    out += `<circle cx="0" cy="0" r="${r * 0.2}" fill="${c}"/>`;
-    out += `<circle cx="${-r * 0.05}" cy="${-r * 0.06}" r="${r * 0.09}" fill="rgba(0,0,0,0.18)"/>`;
+    // Inner bud — tight cluster at centre.
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * 360 + 15;
+      out += `<ellipse cx="0" cy="${-r * 0.12}" rx="${r * 0.17}" ry="${r * 0.16}" fill="${p}" stroke="${shade}" stroke-width="0.3" transform="rotate(${a})"/>`;
+    }
+    out += `<circle cx="0" cy="0" r="${r * 0.14}" fill="${c}"/>`;
   } else if (f.shape === 'star') {
     // Open tulip: pointed petals flaring toward the sun.
     for (let i = 0; i < 6; i++) {

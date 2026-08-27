@@ -7,7 +7,7 @@ import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, spe
 import { TOTAL_STOPS, TOTAL_STAGES, createRun, reachStop, commitPick, beginCeremony, finishCeremony } from './run.js';
 import { loadBouquets, addBouquet, resetBouquets } from './gallery.js';
 import { composePostcard } from './poem.js?v=3';
-import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg, flowerCardSvg } from './art.js?v=2';
+import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg, flowerCardSvg } from './art.js?v=3';
 import { mulberry32 } from './rand.js';
 import { noteFor } from './notes.js';
 import { initAudio } from './audio.js?v=1';
