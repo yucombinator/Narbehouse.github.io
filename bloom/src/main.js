@@ -550,25 +550,31 @@ function speak(text, rate = 1, onEnd = null) {
     if (onEnd) onEnd();
     return false;
   }
+  const vm = narbeVoice();
+  // VoiceManager gates on loaded voices; mirror that here so we never
+  // call speechSynthesis.speak() with zero voices (Chrome silently ignores it).
+  if (vm && typeof vm.getVoices === 'function' && vm.getVoices().length === 0) {
+    if (onEnd) onEnd();
+    return false;
+  }
   try {
     hushSpeech();
-    const vm = narbeVoice();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = rate;
-    if (vm) {
-      const s = vm.getSettings();
-      u.pitch = s.pitch;
-      u.volume = s.volume;
-      const v = vm.getCurrentVoice();
-      if (v) u.voice = v;
-    }
-    if (onEnd) {
-      u.onend = onEnd;
-      u.onerror = onEnd;
-    }
     const reqId = ++speakReqId;
     setTimeout(() => {
       if (reqId !== speakReqId) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = rate;
+      if (vm) {
+        const s = vm.getSettings();
+        u.pitch = s.pitch;
+        u.volume = s.volume;
+        const v = vm.getCurrentVoice();
+        if (v) u.voice = v;
+      }
+      if (onEnd) {
+        u.onend = onEnd;
+        u.onerror = onEnd;
+      }
       speechSynthesis.speak(u);
     }, 50);
     return true;
@@ -1042,7 +1048,6 @@ function openPause() {
   pauseFocus = 0;
   pauseEl.classList.add('show');
   renderPauseItems();
-  speak('Paused');
   focusPauseItem(0);
 }
 
