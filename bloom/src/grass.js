@@ -589,6 +589,7 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
 
       uniform vec3 uSunDir;
       uniform vec3 uPetalColor;
+      uniform vec3 uCameraPos;
       uniform vec3 fogColor;
       uniform float fogNear;
       uniform float fogFar;
