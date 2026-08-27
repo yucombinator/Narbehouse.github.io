@@ -1,7 +1,7 @@
 // Pure random trail generation. No three.js, DOM, or WebAudio — unit-tested.
 import { mulberry32 } from './rand.js';
 import { HILLS } from './hill.js';
-import { flowerById, speciesScale } from './flowers.js?v=6';
+import { flowerById, speciesScale } from './flowers.js?v=7';
 
 // Re-export for tests and callers that import the PRNG from here.
 export { mulberry32 };
@@ -45,6 +45,7 @@ export const FLOWER_VARIANTS = [
   { shape: 'star', petals: 6, spread: 1.2, bigCenter: 0.18 },    // open tulip
   { shape: 'rosette', petals: 8, spread: 1.05, bigCenter: 0.18 }, // full rose
   { shape: 'wild', petals: 5, spread: 1.18, bigCenter: 0.26 },   // wild rose
+  { shape: 'poppy', petals: 4, spread: 1.3, bigCenter: 0.2 },    // broad flat papery bloom
   { shape: 'bell', petals: 5, spread: 0.9, bigCenter: 0.16 },    // nodding bell
   { shape: 'puff', petals: 9, spread: 1.05, bigCenter: 0.14 },   // soft pompom
   { shape: 'spike', petals: 5, spread: 0.85, bigCenter: 0.14 },  // lupine spire

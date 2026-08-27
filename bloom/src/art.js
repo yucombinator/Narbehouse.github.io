@@ -50,6 +50,18 @@ export function flowerHeadSvg(f, r = 15, extra = '') {
       out += `<ellipse cx="0" cy="${-r * 0.12}" rx="${r * 0.17}" ry="${r * 0.16}" fill="${p}" stroke="${shade}" stroke-width="0.3" transform="rotate(${a})"/>`;
     }
     out += `<circle cx="0" cy="0" r="${r * 0.14}" fill="${c}"/>`;
+  } else if (f.shape === 'poppy') {
+    // Poppy: four broad, flat, papery petals overlapping around a dark cup.
+    for (let i = 0; i < 4; i++) {
+      const a = i * 90 + 45; // 45° cross so petals sit between the axes
+      out += `<ellipse cx="0" cy="${-r * 0.52}" rx="${r * 0.62}" ry="${r * 0.58}" fill="${p}" stroke="${shade}" stroke-width="0.5" transform="rotate(${a})"/>`;
+    }
+    out += `<circle cx="0" cy="0" r="${r * 0.18}" fill="${c}"/>`;
+    // A few dark stamens at the cup's heart.
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      out += `<circle cx="${(Math.cos(a) * r * 0.14).toFixed(1)}" cy="${(Math.sin(a) * r * 0.14).toFixed(1)}" r="${r * 0.05}" fill="${c}"/>`;
+    }
   } else if (f.shape === 'star') {
     // Open tulip: pointed petals flaring toward the sun.
     for (let i = 0; i < 6; i++) {

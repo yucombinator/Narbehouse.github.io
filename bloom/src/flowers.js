@@ -29,10 +29,10 @@ export const ROSTER = [
 
   // --- CUP shape: petals gathered into a cup ----------------------------
   { id: 'poppy', name: 'Red Poppy', tts: 'Red poppy',
-    shape: 'cup', petalHex: '#d43a2f', centerHex: '#2c2c2c',
+    shape: 'poppy', petalHex: '#d43a2f', centerHex: '#2c2c2c',
     fact: 'A symbol of remembrance' },
   { id: 'california-poppy', name: 'California Poppy', tts: 'California poppy',
-    shape: 'cup', petalHex: '#f39c2c', centerHex: '#d97b1f',
+    shape: 'poppy', petalHex: '#f39c2c', centerHex: '#d97b1f',
     fact: 'Closes up at night' },
   { id: 'buttercup', name: 'Meadow Buttercup', tts: 'Buttercup',
     shape: 'cup', petalHex: '#ffd83d', centerHex: '#e8b90a',

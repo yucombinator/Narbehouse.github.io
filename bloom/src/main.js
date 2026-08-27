@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=37';
-import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=9';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=38';
+import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=10';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
-import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, speciesScale } from './flowers.js?v=6';
+import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, speciesScale } from './flowers.js?v=7';
 import { TOTAL_STOPS, TOTAL_STAGES, createRun, reachStop, commitPick, beginCeremony, finishCeremony } from './run.js';
 import { loadBouquets, addBouquet, resetBouquets } from './gallery.js';
 import { composePostcard } from './poem.js?v=3';
-import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg, flowerCardSvg } from './art.js?v=3';
+import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg, flowerCardSvg } from './art.js?v=4';
 import { mulberry32 } from './rand.js';
 import { noteFor } from './notes.js';
 import { initAudio } from './audio.js?v=1';
@@ -487,27 +487,24 @@ function computeStopZs(t) {
 stopZs = computeStopZs(trail);
 
 // --- Spoken flower names -------------------------------------------------
+// Voice narration is always on (managed from the pause menu). The old title
+// checkbox was removed to reduce start-page clutter; the pause menu's
+// "Voice on/off" row is the intended toggle.
 const TTS_KEY = 'petalBloom.tts';
-const ttsCheck = document.getElementById('ttsOn');
 let ttsOn = true;
 try { ttsOn = storage.getItem(TTS_KEY) !== '0'; } catch { /* no storage */ }
 // The hub's voice manager is the source of truth when it's loaded.
 if (narbeVoice()) {
   ttsOn = !!narbeVoice().getSettings().ttsEnabled;
-  if (ttsCheck) ttsCheck.checked = ttsOn;
 }
-if (ttsCheck) ttsCheck.checked = ttsOn;
 function applyTtsPref() {
-  const want = !ttsCheck || ttsCheck.checked;
   const vm = narbeVoice();
   if (vm) {
-    if (vm.getSettings().ttsEnabled !== want) vm.toggleTTS(); // syncs back via onSettingsChange
+    if (vm.getSettings().ttsEnabled !== ttsOn) vm.toggleTTS(); // syncs back via onSettingsChange
   } else {
-    ttsOn = want;
     try { storage.setItem(TTS_KEY, ttsOn ? '1' : '0'); } catch { /* no storage */ }
   }
 }
-if (ttsCheck) ttsCheck.addEventListener('change', applyTtsPref);
 
 // Optional distant environment (mountains + lakes). Toggling rebuilds the
 // scene, so apply on the title card and reload.
@@ -931,9 +928,10 @@ function openRest() {
   const theme = MEADOW_THEMES[((themeIndex % MEADOW_THEMES.length) + MEADOW_THEMES.length) % MEADOW_THEMES.length];
   restTitleEl.textContent = `Resting at ${theme.name}`;
   const n = basketPicks.length;
+  const timeMsg = restTimeMessage(themeIndex);
   restSubEl.textContent = n === 0
     ? 'The grass sways; the day waits for you.'
-    : `${n} wildflower${n === 1 ? '' : 's'} so far. The day waits for you.`;
+    : `${n} wildflower${n === 1 ? '' : 's'} so far. ${timeMsg}`;
   restBasketEl.innerHTML = basketSvg(150, 132);
   const blooms = restBasketEl.querySelector('#basketBlooms');
   if (blooms) {
@@ -944,7 +942,17 @@ function openRest() {
   hushSpeech();
   restEl.classList.add('show');
   focusRest(0, true);
-  speak(`Rest well. ${n} wildflower${n === 1 ? '' : 's'} so far.`);
+  speak(`Rest well. ${n} wildflower${n === 1 ? '' : 's'} so far. ${timeMsg}`);
+}
+
+// Rest message tracks the hike's time of day so the three stages of our climb
+// each feel distinct — dawn, mid-morning, afternoon.
+function restTimeMessage(themeIndex) {
+  const T = ['Dawn breathes softly and waits for you.',
+             'The morning warms and waits for you.',
+             'The afternoon light lingers for you.'];
+  const i = ((themeIndex % T.length) + T.length) % T.length;
+  return T[i];
 }
 
 function focusRest(k, silent = false) {
@@ -1147,7 +1155,6 @@ function activatePauseItem(i = pauseFocus) {
       } else {
         ttsOn = !ttsOn;
         try { storage.setItem(TTS_KEY, ttsOn ? '1' : '0'); } catch { /* no storage */ }
-        if (ttsCheck) ttsCheck.checked = ttsOn;
         renderPauseItems();
       }
       speak(ttsOn ? 'Voice on' : 'Voice off');
@@ -1739,7 +1746,6 @@ function bindSharedManagers() {
   if (vm) {
     vm.onSettingsChange((s) => {
       ttsOn = !!s.ttsEnabled;
-      if (ttsCheck) ttsCheck.checked = ttsOn;
       try { storage.setItem(TTS_KEY, ttsOn ? '1' : '0'); } catch { /* no storage */ }
       renderPauseItems();
     });

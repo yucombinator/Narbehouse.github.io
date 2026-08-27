@@ -509,6 +509,10 @@ const SHAPE_LAYERS = {
   wild: [ // wild rose: one open whorl of broad petals
     { tilt: 0.2, r: 1.08 },
   ],
+  poppy: [ // poppy: four broad petals spread flat, a papery shallow bowl
+    { tilt: 0.22, r: 1.1 },
+    { tilt: 0.35, r: 0.7, off: 0.25, z: -0.03 },
+  ],
   bell: [ // nodding bell: narrow petals held high
     { tilt: 1.25, r: 0.95, narrow: 0.74 },
     { tilt: 1.0, r: 0.7, off: 0.5, narrow: 0.74, z: -0.05 },

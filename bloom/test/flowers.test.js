@@ -14,7 +14,7 @@ import {
 import { moodKeyForHex } from '../src/poem.js';
 import { TOTAL_STOPS, TOTAL_STAGES } from '../src/run.js';
 
-const SHAPES = new Set(['daisy', 'cup', 'bell', 'puff', 'spike', 'star', 'wild', 'rosette']);
+const SHAPES = new Set(['daisy', 'cup', 'bell', 'puff', 'spike', 'star', 'wild', 'rosette', 'poppy']);
 
 test('roster covers a 5-stop run with room for variety', () => {
   assert.equal(ROSTER.length, 49, `expected 49 variants, have ${ROSTER.length}`);
@@ -39,11 +39,11 @@ test('every flower has complete data incl. shape + colours', () => {
 test('same-shape variants still look distinct (unique petal colour per shape)', () => {
   const byShape = {};
   for (const f of ROSTER) (byShape[f.shape] ||= []).push(f);
-  assert.deepEqual(Object.keys(byShape).sort(), ['bell', 'cup', 'daisy', 'puff', 'rosette', 'spike', 'star', 'wild']);
+  assert.deepEqual(Object.keys(byShape).sort(), ['bell', 'cup', 'daisy', 'poppy', 'puff', 'rosette', 'spike', 'star', 'wild']);
   for (const [shape, group] of Object.entries(byShape)) {
     const petals = new Set(group.map((f) => f.petalHex));
     assert.equal(petals.size, group.length, `${shape} variants need distinct petalHex`);
-    if (shape !== 'spike' && shape !== 'rosette') { // spike and rosette are lone signatures
+    if (shape !== 'spike' && shape !== 'rosette' && shape !== 'poppy') { // lone or small signature families
       assert.ok(group.length >= 3, `${shape} needs at least three colourways`);
     }
   }
