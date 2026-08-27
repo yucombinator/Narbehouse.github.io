@@ -76,7 +76,7 @@ export function generateTrail({ seed, length = 400, species = null }) {
   // gentler mid-frequency sway so no stretch ever reads as a straight line.
   const layers = 3;
   const freqs = Array.from({ length: layers }, (_, i) =>
-    i === 2 ? 0.009 + rand() * 0.005 : 0.004 + rand() * 0.01);
+    i === 2 ? 0.018 + rand() * 0.010 : (i === 0 ? 0.012 + rand() * 0.012 : 0.006 + rand() * 0.008));
   const phases = Array.from({ length: layers }, () => rand() * Math.PI * 2);
   const amps = freqs.map((f, i) =>
     i === 2 ? 12 + rand() * 10 : (i === 0 ? 4 + rand() * 4 : 2.5 + rand() * 2.5));
@@ -133,6 +133,36 @@ export function generateTrail({ seed, length = 400, species = null }) {
     }
     z -= CLUSTER_SPACING + rand() * CLUSTER_SPACING_JITTER;
     cluster++;
+  }
+
+  // Sporadic meadow flowers: individual blooms scattered across the wide
+  // meadow floor, not just along the path corridor. These give the field
+  // a random, natural look when viewed from the air.
+  const SCATTER_COUNT = 18;
+  const SCATTER_RANGE = 55; // how far from the trail centreline (lateral)
+  for (let i = 0; i < SCATTER_COUNT; i++) {
+    const bz = zStart - 10 - rand() * (zStart - zEnd - 20);
+    const pathX = curveX(bz);
+    const bx = pathX + (rand() - 0.5) * 2 * SCATTER_RANGE;
+    const gy = HILLS.height(bx, bz) + 3.55;
+    const sp = (species && species.length)
+      ? flowerById(species[Math.floor(rand() * species.length)])
+      : null;
+    const kind = sp ? variantForShape(sp.shape) : Math.floor(rand() * FLOWER_VARIANTS.length);
+    buds.push({
+      x: bx,
+      y: gy,
+      z: bz,
+      colorHex: sp ? sp.petalHex : PALETTE[Math.floor(rand() * PALETTE.length)],
+      speciesId: sp ? sp.id : null,
+      scale: sp ? speciesScale(sp.id) : 1,
+      faceYaw: rand() * Math.PI * 2,
+      faceTiltX: (rand() - 0.5) * 0.7,
+      faceTiltZ: (rand() - 0.5) * 0.7,
+      kind,
+      kindIndex: 0,
+      cluster: -1, // scattered, not part of a cluster
+    });
   }
   buds.sort((a, b) => b.z - a.z); // descending z = toward the player's flight
   // Assign a per-kind order so each kind's InstancedMesh indices line up.

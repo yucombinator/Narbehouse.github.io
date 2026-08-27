@@ -667,11 +667,12 @@ const grassHillY = new Float32Array(GRASS_COUNT_ALL);
         vec3 groundColor = mix(vec3(0.14, 0.28, 0.10), vec3(0.22, 0.38, 0.14), 0.5);
         finalColor = mix(groundColor, finalColor, vEdgeFade);
 
-        // Medium-distance terrain blend: soften the grid/clump pattern at
-        // 60-150m by fading toward the ground colour before fog takes over.
+        // Medium-distance terrain blend: gently soften the clump pattern at
+        // 100-200m before fog fully takes over — subtle enough to preserve
+        // grass texture while hiding the worst of the grid artifacts.
         float camDist = length(vWorldPos - uCameraPos);
-        float terpBlend = clamp((camDist - 60.0) / 90.0, 0.0, 1.0);
-        finalColor = mix(finalColor, groundColor, terpBlend * 0.45);
+        float terpBlend = clamp((camDist - 100.0) / 100.0, 0.0, 1.0);
+        finalColor = mix(finalColor, groundColor, terpBlend * 0.15);
 
         // Atmospheric distance fog
         float depth = gl_FragCoord.z / gl_FragCoord.w;

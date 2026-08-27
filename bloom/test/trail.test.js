@@ -29,8 +29,10 @@ test('same seed -> identical trail; different seed -> different trail', () => {
 test('buds come in sparse bunches with long gaps between groups', () => {
   const t = generateTrail(DEFAULT);
   // Group consecutive buds by cluster id (buds are z-sorted, clusters contiguous).
+  // Scattered meadow flowers (cluster === -1) are excluded from cluster checks.
   const groups = new Map();
   for (const b of t.buds) {
+    if (b.cluster === -1) continue;
     if (!groups.has(b.cluster)) groups.set(b.cluster, []);
     groups.get(b.cluster).push(b);
   }
@@ -51,6 +53,7 @@ test('bunches are spaced apart (no giant merged clump)', () => {
   const t = generateTrail(DEFAULT);
   const centers = new Map();
   for (const b of t.buds) {
+    if (b.cluster === -1) continue;
     if (!centers.has(b.cluster)) centers.set(b.cluster, { x: 0, z: 0, n: 0 });
     const c = centers.get(b.cluster);
     c.x += b.x;
@@ -73,7 +76,9 @@ test('every bud lies in a bounded corridor around the path', () => {
     const p = t.pointAt(b.z);
     const dx = Math.abs(b.x - p.x);
     const dy = Math.abs(b.y - p.y);
-    assert.ok(dx <= BUD_SPREAD + 1e-6, `lateral corridor ${dx} at z=${b.z}`);
+    // Scattered meadow flowers (cluster === -1) use a wider corridor.
+    const spread = b.cluster === -1 ? 60 : BUD_SPREAD;
+    assert.ok(dx <= spread + 1e-6, `lateral corridor ${dx} at z=${b.z}`);
     assert.ok(dy <= ALT_AMPLITUDE + 1e-6, `alt corridor ${dy} at z=${b.z}`);
   }
 });

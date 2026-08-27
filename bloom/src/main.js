@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=35';
-import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=8';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=36';
+import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=9';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
 import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, speciesScale } from './flowers.js?v=5';
