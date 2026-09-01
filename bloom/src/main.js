@@ -1458,7 +1458,9 @@ function loop() {
   const wind = windAt(clock.elapsedTime, meadowSeed);
   // The world holds its breath while Ben chooses a flower, watches the
   // ceremony, or pauses; ambient petals keep swaying gently in the background.
-  const frozen = paused || isStopOpen || resting || run.phase === 'CEREMONY' || run.phase === 'DONE';
+  // The camera rests too on the title and pause screens — never drift before
+  // the run begins.
+  const frozen = !started || isTitleOpen || paused || isStopOpen || resting || run.phase === 'CEREMONY' || run.phase === 'DONE';
   let gustLift = 0;
   if (!frozen) {
     gustLift = gustUpdate(dt);
