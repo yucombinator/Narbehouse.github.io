@@ -102,15 +102,15 @@ export const ROSTER = [
   { id: 'iris', name: 'Iris', tts: 'Iris',
     shape: 'cup', petalHex: '#8a7fd6', centerHex: '#f2e04f',
     fact: 'Bearded ruffles of blue' },
-  { id: 'bleeding-heart', name: 'Wild Bleeding Heart', tts: 'Wild bleeding heart',
-    shape: 'bell', petalHex: '#e0709a', centerHex: '#a8406a',
-    fact: 'Pink hearts nodding on arching stems' },
+  { id: 'oregon-sunshine', name: 'Oregon Sunshine', tts: 'Oregon sunshine',
+    shape: 'daisy', petalHex: '#f7c21e', centerHex: '#d97b1f',
+    fact: 'A sun-ray daisy of open slopes' },
   { id: 'trillium', name: 'Trillium', tts: 'Trillium',
     shape: 'star', petalHex: '#f7f4ee', centerHex: '#e8e2c8',
     fact: 'Three wide white petals of the spring woods' },
-  { id: 'salmonberry', name: 'Salmonberry', tts: 'Salmonberry',
-    shape: 'wild', petalHex: '#f291a9', centerHex: '#c95a72',
-    fact: 'Pink rose blossoms, then golden berry' },
+  { id: 'douglas-aster', name: 'Douglas Aster', tts: 'Douglas aster',
+    shape: 'daisy', petalHex: '#9b7fd4', centerHex: '#f2c21e',
+    fact: 'Purple daisies the bees love' },
   { id: 'salal', name: 'Salal', tts: 'Salal',
     shape: 'bell', petalHex: '#f0c4d4', centerHex: '#c88aa0',
     fact: 'Tiny white-pink bells on leafy cliffs' },
@@ -188,7 +188,7 @@ export const ROSTER = [
 export const MEADOW_POOLS = [
   [ // Stage 1 — Garden at Dawn: familiar faces, low and friendly
     'tulip', 'rose', 'peony', 'daffodil', 'marigold', 'trillium', 'lavender',
-    'bleeding-heart', 'orchid', 'jasmine', 'hyacinth', 'iris', 'salmonberry',
+    'oregon-sunshine', 'orchid', 'jasmine', 'hyacinth', 'iris', 'douglas-aster',
     'salal', 'kinnikinnick',
   ],
   [ // Stage 2 — Valley Meadow: prairie classics in morning light
@@ -209,9 +209,9 @@ export const MEADOW_POOLS = [
 // Anything absent defaults to 1.0.
 export const SPECIES_SCALE = {
   sunflower: 1.3, peony: 1.2, rose: 1.12, chrysanthemum: 1.15, lavender: 1.1,
-  iris: 1.0, dandelion: 0.9, orchid: 0.95, trillium: 1.0, salmonberry: 1.0,
+  iris: 1.0, dandelion: 0.9, orchid: 0.95, trillium: 1.0, 'oregon-sunshine': 0.8,
   cosmos: 0.62, marigold: 0.66, 'white-clover': 0.55, kinnikinnick: 0.5,
-  jasmine: 0.5, buttercup: 0.7, gentian: 0.7, salal: 0.6,
+  jasmine: 0.5, buttercup: 0.7, gentian: 0.7, salal: 0.6, 'douglas-aster': 0.8,
   foxglove: 0.8, camas: 0.8, bellflower: 0.85, lupine: 0.9, hyacinth: 0.9,
   monkshood: 0.95,
 };
