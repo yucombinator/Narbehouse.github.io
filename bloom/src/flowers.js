@@ -91,15 +91,9 @@ export const ROSTER = [
   { id: 'chrysanthemum', name: 'Chrysanthemum', tts: 'Chrysanthemum',
     shape: 'puff', petalHex: '#eda04f', centerHex: '#b96a2a',
     fact: 'Autumn\u2019s many-petalled crown' },
-  { id: 'lotus', name: 'Lotus', tts: 'Lotus',
-    shape: 'cup', petalHex: '#f2b8cf', centerHex: '#e8d44f',
-    fact: 'Blooms above still water' },
-  { id: 'lantana', name: 'Lantana', tts: 'Lantana',
-    shape: 'puff', petalHex: '#ef7f4e', centerHex: '#e8b93c',
-    fact: 'One cluster, sunset colors mixed' },
-  { id: 'orchid', name: 'Orchid', tts: 'Orchid',
+  { id: 'orchid', name: 'Calypso Orchid', tts: 'Calypso orchid',
     shape: 'bell', petalHex: '#c86fd4', centerHex: '#9a4fae',
-    fact: 'An elegant, exotic bloom' },
+    fact: 'A shy pink orchid of the mossy woods' },
 
   // --- Garden favourites, part two -----------------------------------------
   { id: 'hyacinth', name: 'Hyacinth', tts: 'Hyacinth',
@@ -108,15 +102,24 @@ export const ROSTER = [
   { id: 'iris', name: 'Iris', tts: 'Iris',
     shape: 'cup', petalHex: '#8a7fd6', centerHex: '#f2e04f',
     fact: 'Bearded ruffles of blue' },
-  { id: 'gardenia', name: 'Gardenia', tts: 'Gardenia',
-    shape: 'puff', petalHex: '#f5f5ef', centerHex: '#e2e8d8',
-    fact: 'Creamy petals, heady scent' },
-  { id: 'nasturtium', name: 'Nasturtium', tts: 'Nasturtium',
-    shape: 'cup', petalHex: '#f0823c', centerHex: '#c9631f',
-    fact: 'Peppery petals in the salad bowl' },
-  { id: 'hollyhock', name: 'Hollyhock', tts: 'Hollyhock',
-    shape: 'bell', petalHex: '#e88fc0', centerHex: '#c95f9a',
-    fact: 'A cottage spire of ruffled bells' },
+  { id: 'bleeding-heart', name: 'Wild Bleeding Heart', tts: 'Wild bleeding heart',
+    shape: 'bell', petalHex: '#e0709a', centerHex: '#a8406a',
+    fact: 'Pink hearts nodding on arching stems' },
+  { id: 'trillium', name: 'Trillium', tts: 'Trillium',
+    shape: 'star', petalHex: '#f7f4ee', centerHex: '#e8e2c8',
+    fact: 'Three wide white petals of the spring woods' },
+  { id: 'salmonberry', name: 'Salmonberry', tts: 'Salmonberry',
+    shape: 'wild', petalHex: '#f291a9', centerHex: '#c95a72',
+    fact: 'Pink rose blossoms, then golden berry' },
+  { id: 'salal', name: 'Salal', tts: 'Salal',
+    shape: 'bell', petalHex: '#f0c4d4', centerHex: '#c88aa0',
+    fact: 'Tiny white-pink bells on leafy cliffs' },
+  { id: 'kinnikinnick', name: 'Kinnikinnick', tts: 'Kinnikinnick',
+    shape: 'bell', petalHex: '#f0b4c8', centerHex: '#c87690',
+    fact: 'Urn-shaped bells on low evergreen' },
+  { id: 'avalanche-lily', name: 'Avalanche Lily', tts: 'Avalanche lily',
+    shape: 'daisy', petalHex: '#f6f2e8', centerHex: '#f0c948',
+    fact: 'A white lily where the snow melts' },
 
   // --- Valley meadow, part two ----------------------------------------------
   { id: 'yarrow', name: 'Yarrow', tts: 'Yarrow',
@@ -142,9 +145,6 @@ export const ROSTER = [
   { id: 'gentian', name: 'Gentian', tts: 'Gentian',
     shape: 'cup', petalHex: '#6f7fe8', centerHex: '#e8eef2',
     fact: 'Blue so deep the sky envies it' },
-  { id: 'edelweiss', name: 'Edelweiss', tts: 'Edelweiss',
-    shape: 'daisy', petalHex: '#f7f7f2', centerHex: '#f2e8b8',
-    fact: 'A woolly white star of the heights' },
   { id: 'monkshood', name: 'Monkshood', tts: 'Monkshood',
     shape: 'spike', petalHex: '#7a6fe0', centerHex: '#e0e4f2',
     fact: 'A hooded blue spire' },
@@ -187,9 +187,9 @@ export const ROSTER = [
 // the meadow of a stage only ever grows that stage's own flowers.
 export const MEADOW_POOLS = [
   [ // Stage 1 — Garden at Dawn: familiar faces, low and friendly
-    'tulip', 'rose', 'peony', 'daffodil', 'marigold', 'lantana', 'lavender',
-    'lotus', 'orchid', 'jasmine', 'hyacinth', 'iris', 'gardenia', 'nasturtium',
-    'hollyhock',
+    'tulip', 'rose', 'peony', 'daffodil', 'marigold', 'trillium', 'lavender',
+    'bleeding-heart', 'orchid', 'jasmine', 'hyacinth', 'iris', 'salmonberry',
+    'salal', 'kinnikinnick',
   ],
   [ // Stage 2 — Valley Meadow: prairie classics in morning light
     'blackeyed-susan', 'oxeye-daisy', 'cosmos', 'sunflower', 'poppy',
@@ -198,7 +198,7 @@ export const MEADOW_POOLS = [
   ],
   [ // Stage 3 — Summit Ridge: thin air — lupines and hardy travellers
     'lupine', 'foxglove', 'columbine', 'bellflower', 'camas',
-    'alpine-paintbrush', 'gentian', 'edelweiss', 'monkshood', 'alpine-aster',
+    'alpine-paintbrush', 'gentian', 'avalanche-lily', 'monkshood', 'alpine-aster',
     'twinflower', 'saxifrage', 'moss-campion', 'red-clover', 'phacelia',
   ],
 ];
@@ -208,10 +208,10 @@ export const MEADOW_POOLS = [
 // clover) stay small and tight; spires (foxglove, lupine) read as columns.
 // Anything absent defaults to 1.0.
 export const SPECIES_SCALE = {
-  sunflower: 1.3, peony: 1.2, rose: 1.12, chrysanthemum: 1.15, lotus: 1.1,
-  hollyhock: 1.05, iris: 1.0, dandelion: 0.9, orchid: 0.95,
-  cosmos: 0.62, lantana: 0.42, marigold: 0.66, 'white-clover': 0.55,
-  jasmine: 0.5, buttercup: 0.7, gentian: 0.7, lavender: 0.7,
+  sunflower: 1.3, peony: 1.2, rose: 1.12, chrysanthemum: 1.15, lavender: 1.1,
+  iris: 1.0, dandelion: 0.9, orchid: 0.95, trillium: 1.0, salmonberry: 1.0,
+  cosmos: 0.62, marigold: 0.66, 'white-clover': 0.55, kinnikinnick: 0.5,
+  jasmine: 0.5, buttercup: 0.7, gentian: 0.7, salal: 0.6,
   foxglove: 0.8, camas: 0.8, bellflower: 0.85, lupine: 0.9, hyacinth: 0.9,
   monkshood: 0.95,
 };

@@ -669,9 +669,10 @@ function openStop() {
   isStopOpen = true;
   stopEl.classList.add('show');
   focusChoice(0, true);
-  // Greet the chooser: the first flower is read aloud the moment the module
-  // opens, so a single Enter can pick it knowingly — no input required first.
-  speak(flowerById(stopOffer[0]).tts);
+  // Greet the chooser: say the stop question, then read the first flower
+  // aloud so a single Enter can pick it knowingly — a low-vision player
+  // hears the prompt ("...choose a flower") before the first option.
+  speak(`Meadow stop ${run.stopsDone + 1} of ${TOTAL_STOPS}. Choose a flower. ${flowerById(stopOffer[0]).tts}.`);
 }
 
 function closeStop() {
