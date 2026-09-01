@@ -2,12 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- Pin every relative URL (scripts, managers, fetched assets) to /bloom/
-     so the page also works when served without the trailing slash
-     (http://localhost:8000/bloom), where ./src/main.js would otherwise
-     resolve against the site root and 404. -->
-<base href="/bloom/">
+<!-- All references below are relative to this page's own directory, so bloom
+     works wherever it is served (repo layout: bloom/src/ is next to this
+     file, and bennyshub/ is one directory up at the repo root). Do not pin
+     an absolute <base href> here — that breaks when hosted at a non-/bloom/
+     path, making modules resolve to a 404 page served as text/html. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Visiting …/bloom without a trailing slash makes relative URLs resolve
+  // against the parent directory (…/src/main.js → 404). Redirect to the
+  // directory form so every reference below stays purely relative.
+  (function () {
+    var seg = location.pathname.split('/').pop();
+    if (seg && seg.indexOf('.') === -1) {
+      location.replace(location.pathname + '/' + location.search + location.hash);
+    }
+  })();
+</script>
 <title>Bloom</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #ffd9ec; font-family: system-ui, sans-serif; }
