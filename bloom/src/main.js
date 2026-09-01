@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initRender, resize, MEADOW_THEMES } from './render.js?v=38';
+import { initRender, resize, MEADOW_THEMES } from './render.js?v=39';
 import { generateTrail, CRUISE_SPEED, FLOWER_VARIANTS, variantForShape } from './trail.js?v=10';
 import { advance } from './steer.js';
 import { collectBud, tintFor, stepSize } from './growth.js';
@@ -512,9 +512,10 @@ const ENV_KEY = 'petalBloom.env';
 const envCheck = document.getElementById('envOn');
 if (envCheck) {
   try {
-    envCheck.checked = storage.getItem(ENV_KEY) !== '0';
+    // Default OFF — only on when the player explicitly opted in.
+    envCheck.checked = storage.getItem(ENV_KEY) === '1';
   } catch {
-    envCheck.checked = true;
+    envCheck.checked = false;
   }
   envCheck.addEventListener('change', () => {
     try {
@@ -529,8 +530,8 @@ if (envCheck) {
 // live (pixel ratio + grass density) when changed. Persisted immediately.
 const QUALITY_KEY = 'petalBloom.quality';
 const lushCheck = document.getElementById('lushOn');
-let visualsLush = false;
-try { visualsLush = storage.getItem(QUALITY_KEY) === 'lush'; } catch { /* no storage */ }
+let visualsLush = true;
+try { visualsLush = storage.getItem(QUALITY_KEY) !== 'fast'; } catch { /* no storage */ }
 function applyVisualPref(on) {
   visualsLush = !!on;
   try { storage.setItem(QUALITY_KEY, on ? 'lush' : 'fast'); } catch { /* no storage */ }

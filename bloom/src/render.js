@@ -1087,8 +1087,8 @@ export function initRender(canvas) {
   // context). Resolution IS the quality lever the menu toggle switches:
   //   Faster (default) 1.0x DPR — smooth on integrated Mac GPUs
   //   Lush — up to native Retina (2.0x DPR) plus denser grass
-  let qualityLush = false;
-  try { qualityLush = localStorage.getItem('petalBloom.quality') === 'lush'; } catch { /* storage unavailable */ }
+  let qualityLush = true;
+  try { qualityLush = localStorage.getItem('petalBloom.quality') !== 'fast'; } catch { /* storage unavailable */ }
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(qualityLush ? Math.min(window.devicePixelRatio || 1, 2.0) : 1.0);
   // Shadows follow a smoothly-moving sun; refreshing the map at ~20Hz is
@@ -1525,7 +1525,7 @@ let envMountains = null;
 let envLakes = null;
 let envThemeIndex = -1; // which meadow the current env was built for
 let envOn = true;
-try { envOn = localStorage.getItem('petalBloom.env') !== '0'; } catch { /* storage unavailable */ }
+try { envOn = localStorage.getItem('petalBloom.env') === '1'; } catch { /* storage unavailable */ }
 function rebuildEnv(theme) {
   if (!envOn) return;
   const ec = theme.env || {};
