@@ -6,7 +6,7 @@ import { collectBud, tintFor, stepSize } from './growth.js';
 import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, speciesScale } from './flowers.js?v=8';
 import { TOTAL_STOPS, TOTAL_STAGES, createRun, reachStop, commitPick, beginCeremony, finishCeremony } from './run.js';
 import { loadBouquets, addBouquet, resetBouquets } from './gallery.js';
-import { composePostcard } from './poem.js?v=3';
+import { composePostcard } from './poem.js?v=4';
 import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg, flowerCardSvg, flowerHeadSvg } from './art.js?v=4';
 import { mulberry32 } from './rand.js';
 import { noteFor } from './notes.js';

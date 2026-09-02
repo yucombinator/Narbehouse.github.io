@@ -17,6 +17,12 @@ export const BANKS = {
       'Gold spills down the slope;',
       'Late light on the grass —',
       'A field full of embers,',
+      'Buttercups to the horizon;',
+      'A jar of spilled sunlight,',
+      'Pollen dusts the breeze —',
+      'Small suns on slim stems,',
+      'The meadow wears amber;',
+      'Heat shimmer of petals,',
     ],
     mid: [
       'every stalk holds its note;',
@@ -24,12 +30,21 @@ export const BANKS = {
       'small fires that never burn;',
       'afternoon leans in to listen;',
       'the light stays a while longer;',
+      'each one a tiny lantern;',
+      'sweetness on the warm wind;',
+      'gold answering gold;',
+      'bees droning their approval;',
+      'bright as a welcome home;',
     ],
     close: [
       'dusk walks slowly home.',
       'the day forgets to end.',
       'evening keeps the gold.',
       'the wind drinks them in.',
+      'the light lingers kindly.',
+      'warm all the way down.',
+      'the field glows on.',
+      'kept like afternoon sun.',
     ],
   },
   rose: {
@@ -40,6 +55,12 @@ export const BANKS = {
       'Red hems on the hillside;',
       'A blush among the green —',
       'Small trumpets of red,',
+      'Rose-red confetti,',
+      'Pink fires, gentle ones;',
+      'Small valentines bloom —',
+      'A parade of petals;',
+      'Crimson chords in green;',
+      'Sweet hearts on thin stems,',
     ],
     mid: [
       'each bloom a soft thank-you;',
@@ -47,12 +68,21 @@ export const BANKS = {
       'warmer than the noon air;',
       'brave as first mornings;',
       'saying what needs no saying;',
+      'each petal a kind word;',
+      'colour like laughter;',
+      'soft as a held hand;',
+      'brave ribbons in the wind;',
+      'warming the whole hillside;',
     ],
     close: [
       'the breeze says it back.',
       'sung straight to the heart.',
       'carried gently home.',
       'remembered all winter.',
+      'loved at first light.',
+      'the heart says thank you.',
+      'petals in your pocket.',
+      'red that never fades.',
     ],
   },
   sky: {
@@ -63,6 +93,12 @@ export const BANKS = {
       'Blue threads through the green;',
       'Cool petals at dawn —',
       'Where clouds lean lower,',
+      'Lavender in waves,',
+      'A drift of periwinkle,',
+      'Indigo at the edges —',
+      'Soft blue congregation,',
+      'Violets underfoot,',
+      'Blue as a held breath,',
     ],
     mid: [
       'clouds pause to admire them;',
@@ -70,22 +106,37 @@ export const BANKS = {
       'the evening listens closely;',
       'stillness made of colour;',
       'the sky leans down to hear;',
+      'colour poured from the sky;',
+      'a calm, cool octave;',
+      'the wind rearranges blue;',
+      'petals like quiet water;',
+      'humming a lower note;',
     ],
     close: [
       'the sky nods approval.',
       'and shine all the more.',
       'peace you can carry.',
       'the day speaks softly here.',
+      'the blue carries you.',
+      'stillness, signed in blue.',
+      'the horizon approves.',
+      'wide as the sky above.',
     ],
   },
   cream: {
     open: [
       'White wings in the grass;',
-      'Moon-coloured blossoms,',
+      'Moon-coloured blossoms,', // night-filtered during stages; album-only
       'Light as a promise,',
       'Pale sails on a green sea;',
       'Morning opens slowly —',
       'Soft crowns, barely there,',
+      'White caps on the green;',
+      'A scatter of pearl,',
+      'Cream on green velvet —',
+      'Small lamps in the grass,',
+      'Petals like first pages,',
+      'An understudy of white,',
     ],
     mid: [
       'morning opens softly here;',
@@ -93,12 +144,22 @@ export const BANKS = {
       'pale petals in soft focus;',
       'quiet as unsaid prayers;',
       'holding the light gently;',
+      'a hush between heartbeats;',
+      'soft voices of the field;',
+      'luminous and unhurried;',
+      'pale flags of peace;',
+      'the grass leans in to listen;',
+      'mid-morning takes its time;',
     ],
     close: [
       'nothing hurries now.',
       'simple, and enough.',
       'the day rests its tools.',
       'rest, and then more rest.',
+      'gentle to the end.',
+      'quiet that restores.',
+      'a breath you keep.',
+      'the white outshines gold.',
     ],
   },
 };
@@ -214,6 +275,7 @@ export function composePostcard({ picks, seed, flowerById, stage = null }) {
   const sig = mix32(mix32(seed >>> 0) ^ picksSignature(Array.isArray(picks) ? picks : []));
   const s1 = mix32(sig ^ 0x9e3779b9);
   const s2 = mix32(sig ^ 0x85ebca6b);
+  const s3 = mix32(sig ^ 0xc2b2ae35);
   const allowed = stage === null
     ? null
     : STAGE_TIMES[((stage % STAGE_TIMES.length) + STAGE_TIMES.length) % STAGE_TIMES.length];
@@ -225,7 +287,7 @@ export function composePostcard({ picks, seed, flowerById, stage = null }) {
   const lines = [
     from(bank.open, s1),
     from(bank.mid, s2),
-    from(bank.close, s1),
+    from(bank.close, s3),
   ];
   return {
     number: meadowNumber(seed),
