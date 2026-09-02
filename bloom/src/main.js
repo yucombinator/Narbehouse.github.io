@@ -1597,83 +1597,82 @@ loadModelAssets();
 
 let started = false;
 
+// --- Switch-friendly input: dialog actions fire on KEY-UP -----------------
+// A player who cannot release a key quickly gets one action per physical
+// press, however long the hold — OS key auto-repeat only produces keydown
+// events, so a held key can never machine-gun the highlight along.
+//
+// The arm/context guard stops stale releases: a key already held when a
+// dialog opens (boost Space, or the flight long-press Enter that opens
+// Pause) disarms, so releasing it inside the dialog does nothing.
+function uiContext() {
+  if (resting) return 'rest';
+  if (paused) return 'pause';
+  if (isStopOpen) return 'stop';
+  if (ceremonyOpen()) return 'ceremony';
+  if (!started || isTitleOpen) return 'title';
+  return 'flight';
+}
+let armedCtx = null;
+
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (paused) closePause();
+    if (resting) continueHike();
+    else if (ceremonyOpen()) toTitle();
+    else if (paused) closePause();
     else if (started && !isStopOpen && !ceremonyOpen()) openPause();
     else closeConfirm();
   }
-  // Rest point: Space steps between the two gentle choices, Enter picks,
-  // Escape gets up and carries on.
-  if (resting) {
-    if (e.key === ' ') {
-      focusRest(restFocus + 1);
-      e.preventDefault();
-    } else if (e.key === 'Enter') {
-      if (!e.repeat) (restFocus === 0 ? continueHike() : menuFromRest());
-      e.preventDefault();
-    } else if (e.key === 'Escape') {
-      continueHike();
-      e.preventDefault();
-    }
-    return;
-  }
-  // Pause menu: Space steps, Enter chooses.
-  if (paused) {
-    if (e.key === ' ') {
-      focusPauseItem(pauseFocus + 1);
-      e.preventDefault();
-    } else if (e.key === 'Enter') {
-      if (!e.repeat) activatePauseItem(); // ignore auto-repeats
-      e.preventDefault();
-    }
-    return;
-  }
-  // Meadow stop chooser: Space steps the highlight, Enter commits.
-  if (isStopOpen) {
-    if (e.key === ' ') {
-      focusChoice(stopFocus + 1);
-      e.preventDefault();
-    } else if (e.key === 'Enter') {
-      commitFocused(stopFocus);
-      e.preventDefault();
-    }
-    return;
-  }
-  if (ceremonyOpen()) {
-    // Interlude: Space skips the read / steps the choices, Enter replays or
-    // chooses, Escape rests.
-    if (interludePhase === 'reveal') {
-      if (e.key === ' ') {
-        hushSpeech(); // skip ahead to the send / rest choices
-        enterSendChoices();
-        e.preventDefault();
-      } else if (e.key === 'Enter') {
-        holdScanForSpeech(() => enterSendChoices()); // replay the haiku
-        e.preventDefault();
-      } else if (e.key === 'Escape') {
-        toTitle();
-        e.preventDefault();
-      }
-    } else if (interludePhase === 'choices') {
-      if (e.key === ' ') {
-        focusScanItem(scanFocus + 1);
-        e.preventDefault();
-      } else if (e.key === 'Enter') {
-        activateScanItem();
-        e.preventDefault();
-      } else if (e.key === 'Escape') {
-        toTitle();
-        e.preventDefault();
-      }
-    }
-    // during 'mailing' the keys wait politely for the send-off to finish
-    return;
-  }
-  if (!started && (e.key === ' ' || e.key === 'Enter')) {
-    startGame();
+  const ctx = uiContext();
+  if (ctx === 'flight') return; // Space/Enter belong to flight (hold-based)
+  // Dialogs own the keys from the moment of the press: swallow the native
+  // behaviour (page scroll, focused-button activation) and arm the switch.
+  if (e.key === ' ' || e.key === 'Enter') {
+    if (!e.repeat) armedCtx = ctx;
     e.preventDefault();
   }
+});
+
+// Route one Space/Enter release to the active dialog's action.
+function switchRelease(key) {
+  const ctx = uiContext();
+  if (armedCtx === null || armedCtx !== ctx) { armedCtx = null; return; }
+  armedCtx = null;
+  if (ctx === 'rest') {
+    // Rest point: Space steps between the two gentle choices, Enter picks.
+    if (key === ' ') focusRest(restFocus + 1);
+    else (restFocus === 0 ? continueHike() : menuFromRest());
+  } else if (ctx === 'pause') {
+    // Pause menu: Space steps, Enter chooses.
+    if (key === ' ') focusPauseItem(pauseFocus + 1);
+    else activatePauseItem();
+  } else if (ctx === 'stop') {
+    // Meadow stop chooser: Space steps the highlight, Enter commits.
+    if (key === ' ') focusChoice(stopFocus + 1);
+    else commitFocused(stopFocus);
+  } else if (ctx === 'ceremony') {
+    // Interlude: Space skips the read / steps the choices, Enter replays
+    // or chooses.
+    if (interludePhase === 'reveal') {
+      if (key === ' ') {
+        hushSpeech(); // skip ahead to the send / rest choices
+        enterSendChoices();
+      } else {
+        holdScanForSpeech(() => enterSendChoices()); // replay the haiku
+      }
+    } else if (interludePhase === 'choices') {
+      if (key === ' ') focusScanItem(scanFocus + 1);
+      else activateScanItem();
+    }
+    // during 'mailing' the keys wait politely for the send-off to finish
+  } else if (ctx === 'title') {
+    startGame();
+  }
+}
+
+document.addEventListener('keyup', (e) => {
+  if (e.key === ' ') { boostHeld = false; switchRelease(' '); }
+  else if (e.key === 'Enter') switchRelease('Enter');
 });
 
 function startGame() {
