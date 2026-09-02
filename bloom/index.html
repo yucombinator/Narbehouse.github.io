@@ -49,24 +49,26 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 22px; background: rgba(255, 227, 240, 0.92); color: #5a2a4a;
     text-align: center;
+    padding: 24px 14px; overflow-y: auto;
   }
-  #title h1 { font-size: 64px; margin: 0; letter-spacing: 0.02em; }
-  #title p { font-size: 24px; margin: 0; max-width: 640px; line-height: 1.5; }
+  #title h1 { font-size: clamp(40px, 11vw, 64px); margin: 0; letter-spacing: 0.02em; }
+  #title p { font-size: clamp(17px, 4.6vw, 24px); margin: 0; max-width: 640px; line-height: 1.5; }
   #title .btnrow { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
   .bigbtn {
-    font-size: 30px; font-weight: 700; color: #5a2a4a; cursor: pointer;
+    font-size: clamp(20px, 5.2vw, 30px); font-weight: 700; color: #5a2a4a; cursor: pointer;
     background: #fff; border: 4px solid #5a2a4a; border-radius: 18px;
-    padding: 18px 44px; min-width: 220px;
+    padding: clamp(12px, 3vw, 18px) clamp(24px, 6vw, 44px); min-width: min(60vw, 220px);
   }
   	  .bigbtn:focus-visible { outline: 5px solid #ff9ec0; }
 	  .ambient-toggle {
-	    font-size: 22px; color: #5a2a4a; cursor: pointer; user-select: none;
+	    font-size: clamp(17px, 4.4vw, 22px); color: #5a2a4a; cursor: pointer; user-select: none;
 	    display: inline-flex; align-items: center; gap: 10px;
 	  }
 	  .ambient-toggle input { width: 26px; height: 26px; accent-color: #ff9ec0; cursor: pointer; }
-	  .tinyhint { font-size: 15px; opacity: 0.7; }
+	  .tinyhint { font-size: clamp(12px, 3.2vw, 15px); opacity: 0.7; }
   .bigbtn.grow { animation: breathe 1.4s ease-in-out infinite; }
   @keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+  .btnrow { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; align-items: center; }
   #confirm {
     position: fixed; inset: 0; z-index: 25; display: none;
     flex-direction: column; align-items: center; justify-content: center; gap: 18px;
@@ -74,8 +76,8 @@
     text-align: center;
   }
   	  #confirm.show { display: flex; }
-	  #confirm h2 { font-size: 36px; margin: 0; }
-	  #confirm .btnrow { display: flex; gap: 20px; }
+	  #confirm h2 { font-size: clamp(26px, 7vw, 36px); margin: 0; }
+	  #confirm .btnrow { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; padding: 0 16px; }
 	  #credits {
 	    position: fixed; inset: 0; z-index: 26; display: none;
 	    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
@@ -97,16 +99,17 @@
   #pause.show { display: flex; }
   #pauseInner {
     background: rgba(255, 244, 250, 0.96);
-    border-radius: 26px; padding: 30px 38px;
+    border-radius: 26px; padding: clamp(18px, 4vw, 30px) clamp(18px, 5vw, 38px);
     box-shadow: 0 12px 40px rgba(90, 42, 74, 0.35);
-    text-align: center; min-width: min(84vw, 430px);
+    text-align: center; width: min(84vw, 430px);
+    max-height: 86vh; overflow-y: auto;
   }
-  #pausePrompt { color: #5a2a4a; font-size: 34px; margin: 0 0 16px; }
+  #pausePrompt { color: #5a2a4a; font-size: clamp(24px, 6.4vw, 34px); margin: 0 0 16px; }
   .pauseItem {
     display: block; width: 100%; cursor: pointer;
-    font-size: 26px; font-weight: 700; color: #5a2a4a;
+    font-size: clamp(20px, 5vw, 26px); font-weight: 700; color: #5a2a4a;
     background: #fff; border: 4px solid rgba(90, 42, 74, 0.25);
-    border-radius: 16px; padding: 13px 18px; margin: 10px 0;
+    border-radius: 16px; padding: clamp(10px, 2.6vw, 13px) 18px; margin: 10px 0;
   }
   .pauseItem.scanFocused {
     border-color: #ff5ca0; background: #fff0f6;
@@ -123,19 +126,19 @@
   #stopInner {
     pointer-events: auto;
     background: rgba(255, 244, 250, 0.94);
-    border-radius: 26px; padding: 26px 34px;
+    border-radius: 26px; padding: clamp(14px, 3.4vw, 26px) clamp(12px, 3.6vw, 34px);
     box-shadow: 0 12px 40px rgba(90,42,74,0.35);
-    text-align: center; max-width: min(92vw, 860px);
+    text-align: center; max-width: min(96vw, 860px);
   }
-  #stopPrompt { color: #5a2a4a; font-size: 30px; margin: 0 0 18px; }
-  #stopCards { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; }
+  #stopPrompt { color: #5a2a4a; font-size: clamp(20px, 5.6vw, 30px); margin: 0 0 18px; }
+  #stopCards { display: flex; gap: clamp(10px, 2.6vw, 22px); justify-content: center; flex-wrap: wrap; }
   .flowerCard {
-    display: flex; flex-direction: column; align-items: center; gap: 10px;
-    width: 190px; min-height: 210px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: clamp(6px, 1.6vw, 10px);
+    width: clamp(104px, 26vw, 190px); min-height: 0; cursor: pointer;
     background: #fff; border: 5px solid rgba(90,42,74,0.25); border-radius: 20px;
-    padding: 16px 10px; font-size: 21px; font-weight: 700; color: #5a2a4a;
+    padding: clamp(10px, 2.4vw, 16px) 8px; font-size: clamp(14px, 3.8vw, 21px); font-weight: 700; color: #5a2a4a;
   }
-  .flowerCard svg { width: 96px; height: 96px; }
+  .flowerCard svg { width: clamp(52px, 13.5vw, 96px); height: clamp(52px, 13.5vw, 96px); }
   .flowerCard.focused {
     border-color: #ff5ca0;
     box-shadow: 0 0 0 6px #ffd1e6, 0 8px 26px rgba(255,92,160,0.45);
@@ -158,8 +161,8 @@
     text-align: center; max-width: min(92vw, 620px);
     backdrop-filter: blur(3px);
   }
-  #restTitle { color: #4a3a28; font-size: 27px; margin: 0 0 4px; }
-  #restSub { color: #6a5a42; font-size: 16px; margin: 0 0 12px; font-style: italic; }
+  #restTitle { color: #4a3a28; font-size: clamp(21px, 5.6vw, 27px); margin: 0 0 4px; }
+  #restSub { color: #6a5a42; font-size: clamp(13px, 3.6vw, 16px); margin: 0 0 12px; font-style: italic; }
   #restBasket { display: flex; justify-content: center; margin: 0 auto 12px; max-width: 460px; }
   #restBasket svg { width: 120px; height: auto; }
   #restBasket .bloom-pop { animation: none; } /* settled, not popping */
@@ -191,7 +194,16 @@
   /* HUD: meadow tag + flower glyphs showing gathered stops */
   .hudDots { display: inline-flex; gap: 6px; margin-left: 18px; vertical-align: middle; }
   .hudFlower { width: 21px; height: 21px; vertical-align: middle; filter: drop-shadow(0 1px 2px rgba(90,42,74,0.25)); }
-  .hudTag { font-size: 23px; font-weight: 800; color: #5a2a4a; vertical-align: middle; }
+  .hudTag { font-size: clamp(15px, 4.2vw, 23px); font-weight: 800; color: #5a2a4a; vertical-align: middle; }
+
+  /* Phones: tighten the HUD so the tag, flower dots, and pause button share
+     the top edge without colliding. */
+  @media (max-width: 700px) {
+    .hudDots { gap: 4px; margin-left: 10px; }
+    .hudFlower { width: 15px; height: 15px; }
+    #pauseBtn { width: 46px; height: 46px; top: 12px; right: 12px; font-size: 19px; }
+    #basket { transform: translateY(-50%) rotate(-3deg) scale(0.72); right: 4px; }
+  }
 
   /* Postcard deal-in (direction of travel through the interlude scan) */
   @keyframes cardInR {
@@ -207,7 +219,7 @@
   #toast {
     position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%) translateY(8px);
     z-index: 30; background: rgba(90,42,74,0.88); color: #fff;
-    font-size: 22px; font-weight: 700; border-radius: 16px; padding: 12px 26px;
+    font-size: clamp(16px, 4.4vw, 22px); font-weight: 700; border-radius: 16px; padding: 12px 26px;
     opacity: 0; transition: opacity 0.25s ease, transform 0.25s ease;
     pointer-events: none; text-align: center;
   }
@@ -231,10 +243,11 @@
     position: fixed; inset: 0; z-index: 28; display: none;
     flex-direction: column; align-items: center; justify-content: center; gap: 14px;
     background: rgba(255, 231, 243, 0.94); padding: 20px;
+    overflow-y: auto;
   }
   #ceremony.show { display: flex; }
   #interludePos {
-    margin: 0; font-size: 26px; font-weight: 800; color: #5a2a4a;
+    margin: 0; font-size: clamp(20px, 5.6vw, 26px); font-weight: 800; color: #5a2a4a;
     letter-spacing: 0.5px;
   }
   .scanFocused {
@@ -254,7 +267,7 @@
   }
   #cerTitle {
     font-family: Georgia, 'Times New Roman', serif;
-    font-size: 38px; margin: 0 96px 4px 0; color: #5a2a4a;
+    font-size: clamp(26px, 7vw, 38px); margin: 0 96px 4px 0; color: #5a2a4a;
   }
   #stampBox {
     position: absolute; top: 14px; right: 16px; transform: rotate(2.5deg);
@@ -264,7 +277,7 @@
   #bouquetArt { display: flex; justify-content: center; margin: 0 0 2px; }
   #poemLines .poemLine {
     font-family: Georgia, 'Times New Roman', serif; font-style: italic;
-    font-size: 25px; line-height: 1.5; color: #5a2a4a;
+    font-size: clamp(18px, 4.8vw, 25px); line-height: 1.5; color: #5a2a4a;
   }
   #postSub {
     margin: 10px 0 2px; font-size: 15px; font-weight: 700;
