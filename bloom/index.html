@@ -191,18 +191,22 @@
     transform-box: fill-box; transform-origin: center bottom;
   }
 
-  /* HUD: meadow tag + flower glyphs showing gathered stops */
-  .hudDots { display: inline-flex; gap: 6px; margin-left: 18px; vertical-align: middle; }
-  .hudFlower { width: 21px; height: 21px; vertical-align: middle; filter: drop-shadow(0 1px 2px rgba(90,42,74,0.25)); }
-  .hudTag { font-size: clamp(15px, 4.2vw, 23px); font-weight: 800; color: #5a2a4a; vertical-align: middle; }
+  /* HUD: meadow tag + the picked flowers themselves. Each meadow stop
+     unlocks its bloom here — the row grows into the hike's bouquet. */
+  .hudDots { display: inline-flex; gap: 8px; margin-left: 16px; vertical-align: middle; }
+  .hudFlower { width: 36px; height: 36px; vertical-align: middle; filter: drop-shadow(0 1px 3px rgba(90,42,74,0.3)); }
+  .hudTag { font-size: clamp(17px, 4.6vw, 27px); font-weight: 800; color: #5a2a4a; vertical-align: middle; }
+
+  /* The wicker basket lives only on the rest screen now (its own panel
+     basket); the right-edge hike basket is retired. */
+  #basket { display: none; }
 
   /* Phones: tighten the HUD so the tag, flower dots, and pause button share
      the top edge without colliding. */
   @media (max-width: 700px) {
-    .hudDots { gap: 4px; margin-left: 10px; }
-    .hudFlower { width: 15px; height: 15px; }
+    .hudDots { gap: 5px; margin-left: 10px; }
+    .hudFlower { width: 26px; height: 26px; }
     #pauseBtn { width: 46px; height: 46px; top: 12px; right: 12px; font-size: 19px; }
-    #basket { transform: translateY(-50%) rotate(-3deg) scale(0.72); right: 4px; }
   }
 
   /* Postcard deal-in (direction of travel through the interlude scan) */
@@ -459,6 +463,6 @@
   </div>
 </div>
 
-<script type="module" src="./src/main.js?v=51"></script>
+<script type="module" src="./src/main.js?v=52"></script>
 </body>
 </html>

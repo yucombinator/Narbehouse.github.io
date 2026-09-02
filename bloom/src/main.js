@@ -7,7 +7,7 @@ import { sampleChoices, flowerById, bouquetTitle, segmentMood, MEADOW_POOLS, spe
 import { TOTAL_STOPS, TOTAL_STAGES, createRun, reachStop, commitPick, beginCeremony, finishCeremony } from './run.js';
 import { loadBouquets, addBouquet, resetBouquets } from './gallery.js';
 import { composePostcard } from './poem.js?v=3';
-import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg, flowerCardSvg } from './art.js?v=4';
+import { basketSvg, bloomInBasketSvg, bouquetSvg, stampSvg, flowerCardSvg, flowerHeadSvg } from './art.js?v=4';
 import { mulberry32 } from './rand.js';
 import { noteFor } from './notes.js';
 import { initAudio } from './audio.js?v=1';
@@ -361,16 +361,18 @@ window.__petalAudio = audio;
 function updateHud() {
   const hud = document.getElementById('hudCount');
   if (hud) {
-    // One text label for the meadow (stage); the flowers themselves show
-    // stop progress — each bud fills in as that stop is picked.
+    // One text label for the meadow (stage); the slots show the hike's
+    // progress — each picked stop unlocks that flower's real bloom in the
+    // HUD, so the top-left row becomes a growing bouquet of the picks.
     let dots = '';
     for (let i = 0; i < TOTAL_STOPS; i++) {
-      const done = i < run.stopsDone;
-      dots +=
-        `<svg class="hudFlower${done ? ' done' : ''}" viewBox="0 0 20 20" aria-hidden="true">` +
-        `<g fill="${done ? '#ff5ca0' : 'rgba(255,255,255,0.55)'}" stroke="${done ? '#d94f86' : 'rgba(90,42,74,0.45)'}" stroke-width="1.4">` +
-        [0, 72, 144, 216, 288].map((a) => `<ellipse cx="10" cy="4.6" rx="3.1" ry="4.2" transform="rotate(${a} 10 10)"/>`).join('') +
-        `</g><circle cx="10" cy="10" r="2.5" fill="${done ? '#ffd76e' : 'rgba(90,42,74,0.35)'}"/></svg>`;
+      const pick = i < run.stopsDone ? flowerById(run.picks[i]) : null;
+      dots += pick
+        ? `<svg class="hudFlower" viewBox="-16 -16 32 32" aria-hidden="true">${flowerHeadSvg(pick, 13)}</svg>`
+        : `<svg class="hudFlower hudSlot" viewBox="0 0 20 20" aria-hidden="true">` +
+          `<g fill="rgba(255,255,255,0.45)" stroke="rgba(90,42,74,0.35)" stroke-width="1.4">` +
+          [0, 72, 144, 216, 288].map((a) => `<ellipse cx="10" cy="4.6" rx="3.1" ry="4.2" transform="rotate(${a} 10 10)"/>`).join('') +
+          `</g><circle cx="10" cy="10" r="2.5" fill="rgba(90,42,74,0.3)"/></svg>`;
     }
     // The hike's scene name lives top-left all day: where you are, always.
     const scene = MEADOW_THEMES[stageIndex % MEADOW_THEMES.length];
