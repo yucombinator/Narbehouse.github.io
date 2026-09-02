@@ -80,7 +80,7 @@ window.addEventListener('keydown', (e) => {
 		}
 		e.preventDefault();
 	}
-	// Enter: a long press opens Pause (Escape and the ⏸ button do too).
+	// Enter: a long press opens Pause (the ⏸ button does too).
 	if (e.key === 'Enter' && started && (run.phase === 'FLYING' || run.phase === 'DRIFTING')) {
 		if (!e.repeat) {
 			clearTimeout(gustHoldTimer);
@@ -1563,16 +1563,8 @@ function closeCredits() {
 }
 if (btnCredits) btnCredits.addEventListener('click', openCredits);
 if (btnCreditsClose) btnCreditsClose.addEventListener('click', closeCredits);
-
-// Keyboard: Escape closes the credits; Space/Enter opens when focused.
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeCredits();
-  const crOpen = creditsEl.classList.contains('show');
-  if (crOpen && (e.key === ' ' || e.key === 'Enter') && document.activeElement === btnCreditsClose) {
-    closeCredits();
-    e.preventDefault();
-  }
-});
+// Credits keys (Space/Enter close) go through the shared key-up switch
+// handler via the 'credits' ui context — Escape is not part of the game.
 
 // Load the CC-BY cherry-blossom petal (GLB) if present; fall back to the
 // procedural petal until then so the game always runs.
@@ -1608,6 +1600,7 @@ let started = false;
 // dialog opens (boost Space, or the flight long-press Enter that opens
 // Pause) disarms, so releasing it inside the dialog does nothing.
 function uiContext() {
+  if (creditsEl?.classList.contains('show')) return 'credits';
   if (resting) return 'rest';
   if (paused) return 'pause';
   if (isStopOpen) return 'stop';
@@ -1618,13 +1611,6 @@ function uiContext() {
 let armedCtx = null;
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    if (resting) continueHike();
-    else if (ceremonyOpen()) toTitle();
-    else if (paused) closePause();
-    else if (started && !isStopOpen && !ceremonyOpen()) openPause();
-    else closeConfirm();
-  }
   const ctx = uiContext();
   if (ctx === 'flight') return; // Space/Enter belong to flight (hold-based)
   // Dialogs own the keys from the moment of the press: swallow the native
@@ -1667,6 +1653,10 @@ function switchRelease(key) {
       else activateScanItem();
     }
     // during 'mailing' the keys wait politely for the send-off to finish
+  } else if (ctx === 'credits') {
+    // Credits overlay: either key closes it and hands focus back to the
+    // title's Credits button.
+    closeCredits();
   } else if (ctx === 'title') {
     startGame();
   }
